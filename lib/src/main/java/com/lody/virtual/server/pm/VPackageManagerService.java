@@ -24,12 +24,15 @@ import com.lody.virtual.client.stub.VASettings;
 import com.lody.virtual.helper.compat.ObjectsCompat;
 import com.lody.virtual.os.VUserHandle;
 import com.lody.virtual.remote.VParceledListSlice;
+import com.lody.virtual.remote.logging.LogMessageHolder;
 import com.lody.virtual.server.IPackageInstaller;
 import com.lody.virtual.server.IPackageManager;
+import com.lody.virtual.server.log.VLoggingManagerService;
 import com.lody.virtual.server.permission.VPermissionManager;
 import com.lody.virtual.server.pm.installer.VPackageInstallerService;
 import com.lody.virtual.server.pm.parser.PackageParserEx;
 import com.lody.virtual.server.pm.parser.VPackage;
+import com.virtualxposed.log.client.LogMessage;
 
 import java.io.File;
 import java.io.PrintWriter;
@@ -241,7 +244,7 @@ public class VPackageManagerService extends IPackageManager.Stub {
             return PackageManager.PERMISSION_DENIED;
         }
         return VPermissionManager.get()
-            .checkPermission(permName, getPackageUid(pkgName, userId));
+                .checkPermission(permName, getPackageUid(pkgName, userId));
     }
 
     @Override
@@ -350,7 +353,12 @@ public class VPackageManagerService extends IPackageManager.Stub {
             if (p != null) {
                 PackageSetting ps = p.mExtras;
                 VPackage.ServiceComponent s = mServices.mServices.get(component);
+
                 if (s != null) {
+                    LogMessage logMessage = new LogMessage.GetService(component.getPackageName(), component.getClassName(), s.info.exported);
+                    LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
+                    VLoggingManagerService.get().log(holder);
+
                     ServiceInfo serviceInfo = PackageParserEx.generateServiceInfo(s, flags, ps.readUserState(userId), userId);
                     ComponentFixer.fixComponentInfo(ps, serviceInfo, userId);
                     return serviceInfo;

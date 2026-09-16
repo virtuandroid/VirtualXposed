@@ -431,7 +431,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
             }
 
             ComponentName component = service.getComponent();
-            LogMessage logMessage = new LogMessage.BindService(serviceInfo.packageName, component != null ? component.toShortString() : "");
+            LogMessage logMessage = new LogMessage.BindService(serviceInfo.packageName, component != null ? component.getClassName() : "", serviceInfo.exported);
             LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
             VLoggingManagerService.get().log(holder);
 
