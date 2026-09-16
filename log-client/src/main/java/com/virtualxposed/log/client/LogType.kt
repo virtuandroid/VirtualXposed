@@ -14,5 +14,6 @@ enum class LogType : Parcelable {
     ModuleLoad,
     BroadcastReceived,
     CodeLoad,
+    BindService,
     FileOpen;
 }

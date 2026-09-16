@@ -41,6 +41,7 @@ sealed class LogMessage(
                         LogType.ModuleLoad -> ModuleLoad(parcel)
                         LogType.BroadcastReceived -> BroadCastReceived(parcel)
                         LogType.CodeLoad -> CodeLoad(parcel)
+                        LogType.BindService -> BindService(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -140,6 +141,22 @@ sealed class LogMessage(
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(path)
+        }
+    }
+
+
+
+    @Serializable
+    data class BindService(
+        val packageName: String,
+        val componentName: String,
+    ) : LogMessage(LogType.BindService) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(packageName)
+            parcel.writeString(componentName)
         }
     }
 }

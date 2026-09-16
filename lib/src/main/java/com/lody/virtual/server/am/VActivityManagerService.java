@@ -73,6 +73,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import mirror.android.app.IServiceConnectionO;
+import timber.log.Timber;
 
 import static android.os.Process.killProcess;
 import static com.lody.virtual.os.VUserHandle.getUserId;
@@ -428,6 +429,12 @@ public class VActivityManagerService extends IActivityManager.Stub {
             if (serviceInfo == null) {
                 return 0;
             }
+
+            ComponentName component = service.getComponent();
+            LogMessage logMessage = new LogMessage.BindService(serviceInfo.packageName, component != null ? component.toShortString() : "");
+            LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
+            VLoggingManagerService.get().log(holder);
+
             ServiceRecord r = findRecordLocked(userId, serviceInfo);
             boolean firstLaunch = r == null;
             if (firstLaunch) {
@@ -440,13 +447,12 @@ public class VActivityManagerService extends IActivityManager.Stub {
                 return 0;
             }
             ServiceRecord.IntentBindRecord boundRecord = r.peekBinding(service);
-
             if (boundRecord != null && boundRecord.binder != null && boundRecord.binder.pingBinder()) {
                 if (boundRecord.doRebind) {
                     try {
                         IApplicationThreadCompat.scheduleBindService(r.process.appThread, r, service, true, 0);
                     } catch (RemoteException e) {
-                        e.printStackTrace();
+                        Timber.e(e);
                     }
                 }
                 ComponentName componentName = new ComponentName(r.serviceInfo.packageName, r.serviceInfo.name);
@@ -455,7 +461,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
                 try {
                     IApplicationThreadCompat.scheduleBindService(r.process.appThread, r, service, false, 0);
                 } catch (RemoteException e) {
-                    e.printStackTrace();
+                    Timber.e(e);
                 }
             }
             r.lastActivityTime = SystemClock.uptimeMillis();
