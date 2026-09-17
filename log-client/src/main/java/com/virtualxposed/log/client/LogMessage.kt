@@ -3,6 +3,7 @@ package com.virtualxposed.log.client
 import android.annotation.SuppressLint
 import android.os.Parcel
 import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.Serializable
@@ -131,17 +132,26 @@ sealed class LogMessage(
     }
 
 
+    @Serializable
+    @Parcelize
+    enum class CodeLoadMethod : Parcelable {
+        Native,
+        APK
+    }
+
     @SuppressLint("UnsafeOptInUsageError")
     @Serializable
     data class CodeLoad(
         // This could be a real Intent, but that makes JSON serialization tricky
         val path: String,
+        val codeLoadMethod: CodeLoadMethod
     ) : LogMessage(LogType.CodeLoad) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!)
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readParcelable<CodeLoadMethod>(CodeLoadMethod::class.java.classLoader)!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(path)
+            parcel.writeParcelable(codeLoadMethod, 0)
         }
     }
 

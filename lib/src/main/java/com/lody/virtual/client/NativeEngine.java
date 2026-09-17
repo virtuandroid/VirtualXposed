@@ -214,7 +214,7 @@ public class NativeEngine {
 
     public static void onOpenDexFileNative(String[] params) {
         String dexOrJarPath = params[0];
-        VLoggingClient.get().log(new LogMessage.CodeLoad(dexOrJarPath));
+        VLoggingClient.get().log(new LogMessage.CodeLoad(dexOrJarPath, LogMessage.CodeLoadMethod.APK));
         String outputPath = params[1];
         VLog.d(TAG, "DexOrJarPath = %s, OutputPath = %s.", dexOrJarPath, outputPath);
         try {

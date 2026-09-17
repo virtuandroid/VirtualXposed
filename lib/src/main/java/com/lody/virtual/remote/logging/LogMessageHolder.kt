@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.system.Os
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.os.VBinder
+import com.lody.virtual.os.VEnvironment
 import com.lody.virtual.os.VEnvironment.getPackageResourcePath
 import com.lody.virtual.server.pm.VPackageManagerService
 import com.virtualxposed.log.client.LogMessage
@@ -27,6 +28,7 @@ class LogMessageHolder private constructor(
     // TODO Handle cloned package names
     val packageName: String?,
     val timestamp: Long,
+    val dangerous: Boolean
 ) {
     class Builder(private val logMessage: LogMessage) {
         private var pid: Int = VBinder.getCallingPid()
@@ -55,7 +57,34 @@ class LogMessageHolder private constructor(
         }
 
         fun build(): LogMessageHolder {
-            return LogMessageHolder(logMessage, pid, packageName, timestamp)
+            val dangerous = when (logMessage) {
+                is LogMessage.CodeLoad -> {
+                    val appDir = VEnvironment.getDataAppDirectory().absolutePath
+
+                    // System file loading is not dangerous
+                    val isSystem =
+                        logMessage.path.startsWith("/system") || (logMessage.path.startsWith("/vendor"))
+
+                    val pathSuffix = logMessage.path.removePrefix("$appDir/").substringAfter("/")
+                    // Dynamic code loading from storage is classified as dangerous
+                    // Apps should only use bundled native code
+                    val isBundledCode =
+                        logMessage.path.startsWith(appDir) && pathSuffix == "base.apk" || pathSuffix.startsWith("base.apk!")
+
+                    !isSystem && !isBundledCode
+                }
+                // Apps should never access each others non-exported services, it breaks the Android Sandbox
+                is LogMessage.GetService -> {
+                    logMessage.packageName != packageName && !logMessage.isExported
+                }
+
+                is LogMessage.BindService -> {
+                    logMessage.packageName != packageName && !logMessage.isExported
+                }
+
+                else -> false
+            }
+            return LogMessageHolder(logMessage, pid, packageName, timestamp, dangerous)
         }
     }
 
