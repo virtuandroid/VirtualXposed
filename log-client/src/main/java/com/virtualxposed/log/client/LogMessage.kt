@@ -44,6 +44,7 @@ sealed class LogMessage(
                         LogType.CodeLoad -> CodeLoad(parcel)
                         LogType.BindService -> BindService(parcel)
                         LogType.GetService -> GetService(parcel)
+                        LogType.GetProvider -> GetProvider(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -180,6 +181,22 @@ sealed class LogMessage(
         val componentName: String,
         val isExported: Boolean,
     ) : LogMessage(LogType.GetService) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!, parcel.readInt() == 1)
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(packageName)
+            parcel.writeString(componentName)
+            parcel.writeInt(if (isExported) 1 else 0)
+        }
+    }
+
+    @Serializable
+    data class GetProvider(
+        val packageName: String,
+        val componentName: String,
+        val isExported: Boolean,
+    ) : LogMessage(LogType.GetProvider) {
         constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!, parcel.readInt() == 1)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {

@@ -378,6 +378,10 @@ public class VPackageManagerService extends IPackageManager.Stub {
                 PackageSetting ps = p.mExtras;
                 VPackage.ProviderComponent provider = mProvidersByComponent.get(component);
                 if (provider != null) {
+                    LogMessage logMessage = new LogMessage.BindService(provider.owner.packageName, component.getClassName(), provider.info.exported);
+                    LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
+                    VLoggingManagerService.get().log(holder);
+
                     ProviderInfo providerInfo = PackageParserEx.generateProviderInfo(provider, flags, ps.readUserState(userId), userId);
                     ComponentFixer.fixComponentInfo(ps, providerInfo, userId);
                     return providerInfo;

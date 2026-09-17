@@ -82,6 +82,10 @@ class LogMessageHolder private constructor(
                     logMessage.packageName != packageName && !logMessage.isExported
                 }
 
+                is LogMessage.GetProvider -> {
+                    logMessage.packageName != packageName && !logMessage.isExported
+                }
+
                 else -> false
             }
             return LogMessageHolder(logMessage, pid, packageName, timestamp, dangerous)
