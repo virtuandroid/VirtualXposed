@@ -1,10 +1,8 @@
 package com.lody.virtual.server.log
 
 import com.lody.virtual.client.core.VirtualCore
-import com.lody.virtual.client.ipc.VLoggingClientAttacher
 import com.lody.virtual.remote.logging.LogMessageHolder
 import com.virtualxposed.log.client.LogMessage
-import com.virtualxposed.log.client.VLoggingClient
 import com.virtualxposed.log.server.IVLoggingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

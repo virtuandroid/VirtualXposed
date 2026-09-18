@@ -16,7 +16,7 @@ import kotlinx.serialization.json.Json
 /**
  * This class wraps over the log message to provide additional metadata about the log message.
  *
- * It is assumed that an attacker can send forged log messages to the logging service,
+ * It is assumed that an attacker targeting this project can send forged log messages to the logging service,
  * therefore this holder determines additional metadata about the sender such as the PID and package name.
  */
 @SuppressLint("UnsafeOptInUsageError")
@@ -86,6 +86,16 @@ class LogMessageHolder private constructor(
                 is LogMessage.GetProvider -> {
                     logMessage.packageName != packageName && !logMessage.isExported
                 }
+
+                is LogMessage.AppKill -> {
+                    val pkgName = packageName
+                    val processName = logMessage.processName
+
+                    // Dangerous if processName does not start with the packageName
+                    // E.g. if one app is killing another app
+                    (processName != null) && (pkgName != null) && !processName.startsWith(pkgName)
+                }
+
                 // Very few apps need to run shell commands.
                 // Assume they are dangerous by default.
                 is LogMessage.Exec -> {

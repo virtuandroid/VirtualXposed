@@ -756,11 +756,10 @@ public class VActivityManagerService extends IActivityManager.Stub {
         processDead(record);
         record.lock.open();
 
-        LogMessage message = new LogMessage.AppKill();
+        LogMessage message = new LogMessage.AppDeath();
         LogMessageHolder holder = new LogMessageHolder.Builder(message)
                 .setPackageName(record.processName)
                 .setPid(record.pid)
-                .setHostPackage()
                 .build();
 
         VLoggingManagerService.get().log(holder);

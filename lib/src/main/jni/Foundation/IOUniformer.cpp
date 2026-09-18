@@ -520,6 +520,7 @@ HOOK_DEF(void*, dlsym, void *handle, char *symbol) {
 // int kill(pid_t pid, int sig);
 HOOK_DEF(int, kill, pid_t pid, int sig) {
     ALOGD(">>>>> kill >>> pid: %d, sig: %d.", pid, sig);
+    log_kill(pid);
     int ret = syscall(__NR_kill, pid, sig);
     return ret;
 }
@@ -660,6 +661,7 @@ void IOUniformer::startUniformer(const char *so_path, int api_level, int preview
         HOOK_SYMBOL(handle, chdir);
         HOOK_SYMBOL(handle, execve);
         HOOK_SYMBOL(handle, statfs64);
+        HOOK_SYMBOL(handle, kill);
         dlclose(handle);
     }
 

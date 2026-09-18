@@ -36,7 +36,8 @@ sealed class LogMessage(
                     when (type) {
                         LogType.HookAttach -> HookAttach(parcel)
                         LogType.AppLoad -> AppLoad()
-                        LogType.AppKill -> AppKill()
+                        LogType.AppKill -> AppKill(parcel)
+                        LogType.AppDeath -> AppDeath()
                         LogType.FileOpen -> FileOpen(parcel)
                         LogType.HookExecution -> HookExecution(parcel)
                         LogType.ModuleLoad -> ModuleLoad(parcel)
@@ -99,10 +100,19 @@ sealed class LogMessage(
     class AppLoad : LogMessage(LogType.AppLoad)
 
 
-    @OptIn(InternalSerializationApi::class)
     @Serializable
-    class AppKill : LogMessage(LogType.AppKill)
+    class AppKill(val pid: Int, val processName: String?) : LogMessage(LogType.AppKill) {
+        constructor(parcel: Parcel) : this(parcel.readInt(), parcel.readString())
 
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeInt(pid)
+            parcel.writeString(processName)
+        }
+    }
+
+    @Serializable
+    class AppDeath : LogMessage(LogType.AppDeath)
 
     @SuppressLint("UnsafeOptInUsageError")
     @Serializable
@@ -148,7 +158,10 @@ sealed class LogMessage(
         val path: String,
         val codeLoadMethod: CodeLoadMethod
     ) : LogMessage(LogType.CodeLoad) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readParcelable<CodeLoadMethod>(CodeLoadMethod::class.java.classLoader)!!)
+        constructor(parcel: Parcel) : this(
+            parcel.readString()!!,
+            parcel.readParcelable<CodeLoadMethod>(CodeLoadMethod::class.java.classLoader)!!
+        )
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
@@ -176,7 +189,11 @@ sealed class LogMessage(
         val componentName: String,
         val isExported: Boolean,
     ) : LogMessage(LogType.BindService) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!, parcel.readInt() == 1)
+        constructor(parcel: Parcel) : this(
+            parcel.readString()!!,
+            parcel.readString()!!,
+            parcel.readInt() == 1
+        )
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
@@ -193,7 +210,11 @@ sealed class LogMessage(
         val componentName: String,
         val isExported: Boolean,
     ) : LogMessage(LogType.GetService) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!, parcel.readInt() == 1)
+        constructor(parcel: Parcel) : this(
+            parcel.readString()!!,
+            parcel.readString()!!,
+            parcel.readInt() == 1
+        )
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
@@ -209,7 +230,11 @@ sealed class LogMessage(
         val componentName: String,
         val isExported: Boolean,
     ) : LogMessage(LogType.GetProvider) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!, parcel.readInt() == 1)
+        constructor(parcel: Parcel) : this(
+            parcel.readString()!!,
+            parcel.readString()!!,
+            parcel.readInt() == 1
+        )
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)

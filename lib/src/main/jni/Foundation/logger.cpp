@@ -26,7 +26,16 @@
 
 static jclass g_helperClass = nullptr;
 static jmethodID g_logExecMethod = nullptr;
+static jmethodID g_logKillMethod = nullptr;
 
+void log_kill(pid_t pid) {
+    facebook::jni::Environment::ensureCurrentThreadIsAttached();
+    JNIEnv *env = facebook::jni::Environment::current();
+
+    if (env == nullptr || g_helperClass == nullptr || g_logKillMethod == nullptr) return;
+
+    env->CallStaticVoidMethod(g_helperClass, g_logKillMethod, pid);
+}
 
 void log_exec(const char *filename) {
     if (filename == nullptr) return;
@@ -65,7 +74,7 @@ void *log_server_thread_func(void *arg) {
 
 void start_log_server() {
     pthread_t thread;
-    pthread_create(&thread, NULL, log_server_thread_func, NULL);
+    pthread_create(&thread, nullptr, log_server_thread_func, nullptr);
     pthread_detach(thread);
 }
 
@@ -108,5 +117,11 @@ void init_log_classes(JNIEnv *env) {
             g_helperClass,
             "logNativeExec",
             "(Ljava/lang/String;)V"
+    );
+
+    g_logKillMethod = env->GetStaticMethodID(
+            g_helperClass,
+            "logNativeKill",
+            "(I)V"
     );
 }

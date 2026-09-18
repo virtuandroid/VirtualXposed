@@ -11,6 +11,7 @@ enum class LogType : Parcelable {
     HookExecution,
     AppLoad,
     AppKill,
+    AppDeath,
     ModuleLoad,
     BroadcastReceived,
     CodeLoad,
