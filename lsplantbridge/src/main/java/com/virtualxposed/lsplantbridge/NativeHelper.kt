@@ -8,4 +8,9 @@ object NativeHelper {
     fun logNativeCodeLoad(path: String) {
         VLoggingClient.get().log(LogMessage.CodeLoad(path, LogMessage.CodeLoadMethod.Native))
     }
+
+    @JvmStatic
+    fun logNativeExec(path: String) {
+        VLoggingClient.get().log(LogMessage.Exec(path))
+    }
 }

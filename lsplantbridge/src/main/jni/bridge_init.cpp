@@ -48,7 +48,7 @@ void logCodeLoad(const char *filename) {
     }
 }
 
-void initClasses(JNIEnv *env) {
+void init_log_classes(JNIEnv *env) {
     jclass localClass = env->FindClass("com/virtualxposed/lsplantbridge/NativeHelper");
     if (localClass == nullptr) return;
 
@@ -152,7 +152,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         return JNI_ERR;
     }
 
-    initClasses(env);
+    init_log_classes(env);
     LOG_INFO("Bridge initialized");
 
     return JNI_VERSION_1_6;

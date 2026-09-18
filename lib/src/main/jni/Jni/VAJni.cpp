@@ -7,6 +7,7 @@
 #include <fb/include/fb/fbjni.h>
 #include <ctime>
 #include "VAJni.h"
+#include "logger.h"
 
 using namespace facebook::jni;
 
@@ -70,6 +71,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
     if (vm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {
         return -1;
     }
+
+    init_log_classes(env);
 
     return initialize(vm, [] {
         nativeEngineClass = findClassStatic("com/lody/virtual/client/NativeEngine");

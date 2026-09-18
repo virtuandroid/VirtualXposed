@@ -17,5 +17,6 @@ enum class LogType : Parcelable {
     BindService,
     GetService,
     GetProvider,
+    Exec,
     FileOpen;
 }

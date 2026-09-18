@@ -138,6 +138,7 @@ public class BroadcastSystem {
             String componentAction = String.format("_VA_%s_%s", info.packageName, info.name);
             IntentFilter componentFilter = new IntentFilter(componentAction);
             BroadcastReceiver r = new StaticBroadcastReceiver(setting.appId, info, componentFilter);
+            // TODO Change permanent RECEIVER_EXPORTED to info.exported
             mContext.registerReceiver(r, componentFilter, null, mScheduler, Context.RECEIVER_EXPORTED);
             receivers.add(r);
             for (VPackage.ActivityIntentInfo ci : receiver.intents) {

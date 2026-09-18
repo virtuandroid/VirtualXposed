@@ -45,6 +45,7 @@ sealed class LogMessage(
                         LogType.BindService -> BindService(parcel)
                         LogType.GetService -> GetService(parcel)
                         LogType.GetProvider -> GetProvider(parcel)
+                        LogType.Exec -> Exec(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -156,7 +157,18 @@ sealed class LogMessage(
         }
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
+    @Serializable
+    data class Exec(
+        val path: String,
+    ) : LogMessage(LogType.Exec) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!)
 
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(path)
+        }
+    }
 
     @Serializable
     data class BindService(

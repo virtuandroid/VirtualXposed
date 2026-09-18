@@ -58,6 +58,7 @@ class LogMessageHolder private constructor(
 
         fun build(): LogMessageHolder {
             val dangerous = when (logMessage) {
+                // TODO Fix SO names not having paths
                 is LogMessage.CodeLoad -> {
                     val appDir = VEnvironment.getDataAppDirectory().absolutePath
 
@@ -84,6 +85,11 @@ class LogMessageHolder private constructor(
 
                 is LogMessage.GetProvider -> {
                     logMessage.packageName != packageName && !logMessage.isExported
+                }
+                // Very few apps need to run shell commands.
+                // Assume they are dangerous by default.
+                is LogMessage.Exec -> {
+                    true
                 }
 
                 else -> false

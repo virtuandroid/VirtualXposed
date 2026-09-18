@@ -24,6 +24,7 @@
 #include "SandboxFs.h"
 #include "Path.h"
 #include "SymbolFinder.h"
+#include "logger.h"
 
 #include <iostream>
 #include <unistd.h>
@@ -182,7 +183,7 @@ HOOK_DEF(int, mknodat, int dirfd, const char *pathname, mode_t mode, dev_t dev) 
 
 // int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
 HOOK_DEF(int, utimensat, int dirfd, const char *pathname, const struct timespec times[2],
-        int flags) {
+         int flags) {
     int res;
     const char *redirect_path = relocate_path(pathname, &res);
     int ret = syscall(__NR_utimensat, dirfd, redirect_path, times, flags);
@@ -247,7 +248,7 @@ HOOK_DEF(int, symlinkat, const char *oldpath, int newdirfd, const char *newpath)
 
 // int linkat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
 HOOK_DEF(int, linkat, int olddirfd, const char *oldpath, int newdirfd, const char *newpath,
-        int flags) {
+         int flags) {
     int res_old;
     int res_new;
     const char *redirect_path_old = relocate_path(oldpath, &res_old);
@@ -367,9 +368,9 @@ char **build_new_env(char *const envp[]) {
         sprintf(ld_preload, "LD_PRELOAD=%s", so_path);
     }
     int new_envp_count = orig_envp_count
-            + get_keep_item_count()
-            + get_forbidden_item_count()
-            + get_replace_item_count() * 2 + 1;
+                         + get_keep_item_count()
+                         + get_forbidden_item_count()
+                         + get_replace_item_count() * 2 + 1;
     if (provided_ld_preload) {
         new_envp_count--;
     }
@@ -425,7 +426,8 @@ char **build_new_argv(char *const envp[]) {
         new_envp[cur++] = (char *) "--compile-pic";
     }
     if (api_level >= 23) {
-        new_envp[cur++] = (char *) (api_level > 25 ? "--inline-max-code-units=0" : "--inline-depth-limit=0");
+        new_envp[cur++] = (char *) (api_level > 25 ? "--inline-max-code-units=0"
+                                                   : "--inline-depth-limit=0");
     }
     if (api_level >= 28) {
         new_envp[cur++] = (char *) "--debuggable";
@@ -447,7 +449,10 @@ HOOK_DEF(int, execve, const char *pathname, char *argv[], char *const envp[]) {
      *
      * We will support 64Bit to adopt it.
      */
+
     // ALOGE("execve : %s", pathname); // any output can break exec. See bug: https://issuetracker.google.com/issues/109448553
+    safe_log_exec(pathname);
+
     int res;
     const char *redirect_path = relocate_path(pathname, &res);
     char *ld = getenv("LD_PRELOAD");
@@ -494,7 +499,7 @@ HOOK_DEF(void*, do_dlopen_V19, const char *filename, int flag, const void *extin
 }
 
 HOOK_DEF(void*, do_dlopen_V24, const char *name, int flags, const void *extinfo,
-        void *caller_addr) {
+         void *caller_addr) {
     int res;
     const char *redirect_path = relocate_path(name, &res);
     void *ret = orig_do_dlopen_V24(redirect_path, flags, extinfo, caller_addr);
@@ -531,7 +536,7 @@ void onSoLoaded(const char *name, void *handle) {
 }
 
 int findSymbol(const char *name, const char *libn,
-        unsigned long *addr) {
+               unsigned long *addr) {
     return find_name(getpid(), name, libn, addr);
 }
 
@@ -539,25 +544,25 @@ void hook_dlopen(int api_level) {
     void *symbol = NULL;
     if (api_level > 25) {
         if (findSymbol("__dl__Z9do_dlopenPKciPK17android_dlextinfoPKv", "linker",
-                (unsigned long *) &symbol) == 0) {
+                       (unsigned long *) &symbol) == 0) {
             hook_function(symbol, (void *) new_do_dlopen_V24,
-                    (void **) &orig_do_dlopen_V24);
+                          (void **) &orig_do_dlopen_V24);
         }
     } else if (api_level > 23) {
         if (findSymbol("__dl__Z9do_dlopenPKciPK17android_dlextinfoPv", "linker",
-                (unsigned long *) &symbol) == 0) {
+                       (unsigned long *) &symbol) == 0) {
             hook_function(symbol, (void *) new_do_dlopen_V24,
-                    (void **) &orig_do_dlopen_V24);
+                          (void **) &orig_do_dlopen_V24);
         }
     } else if (api_level >= 19) {
         if (findSymbol("__dl__Z9do_dlopenPKciPK17android_dlextinfo", "linker",
-                (unsigned long *) &symbol) == 0) {
+                       (unsigned long *) &symbol) == 0) {
             hook_function(symbol, (void *) new_do_dlopen_V19,
-                    (void **) &orig_do_dlopen_V19);
+                          (void **) &orig_do_dlopen_V19);
         }
     } else {
         if (findSymbol("__dl_dlopen", "linker",
-                (unsigned long *) &symbol) == 0) {
+                       (unsigned long *) &symbol) == 0) {
             hook_function(symbol, (void *) new_dlopen, (void **) &orig_dlopen);
         }
     }
@@ -660,4 +665,5 @@ void IOUniformer::startUniformer(const char *so_path, int api_level, int preview
 
 //    apply_seccomp_filter();
     // hook_dlopen(api_level);
+    start_log_server();
 }
