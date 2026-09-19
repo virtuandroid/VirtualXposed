@@ -1,6 +1,7 @@
 package com.lody.virtual.remote.logging
 
 import android.annotation.SuppressLint
+import android.os.Build
 import android.system.Os
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.os.VBinder

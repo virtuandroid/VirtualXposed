@@ -28,6 +28,8 @@ import com.lody.virtual.server.interfaces.IPackageObserver;
 import com.lody.virtual.server.permission.VPermissionManager;
 import com.lody.virtual.server.pm.parser.PackageParserEx;
 import com.lody.virtual.server.pm.parser.VPackage;
+import com.virtualxposed.log.client.LogMessage;
+import com.virtualxposed.log.client.VLoggingClient;
 
 import java.io.File;
 import java.io.IOException;
@@ -36,6 +38,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+
+import timber.log.Timber;
 
 /**
  * @author Lody
@@ -162,6 +166,9 @@ public class VAppManagerService extends IAppManager.Stub {
         if (pkg == null || pkg.packageName == null) {
             return InstallResult.makeFailure("Unable to parse the package.");
         }
+
+        VLoggingClient.get().log(new LogMessage.AppInstall(pkg.packageName));
+
         InstallResult res = new InstallResult();
         res.packageName = pkg.packageName;
         // PackageCache holds all packages, try to check if we need to update.
@@ -302,21 +309,25 @@ public class VAppManagerService extends IAppManager.Stub {
         try {
             pkg = PackageParserEx.parsePackage(packageFile);
         } catch (Throwable e) {
-            e.printStackTrace();
+            Timber.e(e);
         }
+
         if (pkg == null || pkg.packageName == null) {
             return false;
         }
+
+        VLoggingClient.get().log(new LogMessage.AppInstall(pkg.packageName));
+
         try {
             ps = (PackageSetting) ps.clone();
         } catch (Exception e) {
-            e.printStackTrace();
+            Timber.e(e);
         }
         ps.appId = mUidSystem.getOrCreateUid(userId, pkg);
         try {
             mPermissionManager.initPermissionsForUid(ps.appId, pkg);
         } catch (Throwable e) {
-            e.printStackTrace();
+            Timber.e(e);
             return false;
         }
         notifyAppInstalled(ps, userId);
@@ -334,7 +345,7 @@ public class VAppManagerService extends IAppManager.Stub {
                 FileUtils.chmod(packageFile.getAbsolutePath(), FileUtils.FileMode.MODE_755);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            Timber.e(e);
         }
     }
 
@@ -450,7 +461,7 @@ public class VAppManagerService extends IAppManager.Stub {
             }
             PackageCacheManager.remove(packageName);
         } catch (Exception e) {
-            e.printStackTrace();
+            Timber.e(e);
         } finally {
             notifyAppUninstalled(ps, -1);
         }
@@ -534,7 +545,7 @@ public class VAppManagerService extends IAppManager.Stub {
                     mRemoteCallbackList.getBroadcastItem(N).onPackageInstalledAsUser(userId, pkg);
                 }
             } catch (RemoteException e) {
-                e.printStackTrace();
+                Timber.e(e);
             }
         }
         mRemoteCallbackList.finishBroadcast();
@@ -542,6 +553,8 @@ public class VAppManagerService extends IAppManager.Stub {
     }
 
     private void notifyAppUninstalled(PackageSetting setting, int userId) {
+        VLoggingClient.get().log(new LogMessage.AppUninstall(setting.packageName));
+
         final String pkg = setting.packageName;
         int N = mRemoteCallbackList.beginBroadcast();
         while (N-- > 0) {
@@ -554,7 +567,7 @@ public class VAppManagerService extends IAppManager.Stub {
                     mRemoteCallbackList.getBroadcastItem(N).onPackageUninstalledAsUser(userId, pkg);
                 }
             } catch (RemoteException e) {
-                e.printStackTrace();
+                Timber.e(e);
             }
         }
         mRemoteCallbackList.finishBroadcast();

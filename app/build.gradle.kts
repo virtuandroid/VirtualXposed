@@ -2,7 +2,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20"
 }
 
 val properties = Properties()
@@ -69,6 +69,7 @@ dependencies {
     implementation(project(":lib"))
     implementation(project(":launcher"))
     implementation(project(":exposed-core"))
+    implementation(project(":log-client"))
 
     // Android Lib / Kotlin
     // Note: Pass your 'kotlin_version' via project extra properties or a version catalog if defined

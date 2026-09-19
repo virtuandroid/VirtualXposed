@@ -19,5 +19,7 @@ enum class LogType : Parcelable {
     GetService,
     GetProvider,
     Exec,
+    AppInstall,
+    AppUninstall,
     FileOpen;
 }

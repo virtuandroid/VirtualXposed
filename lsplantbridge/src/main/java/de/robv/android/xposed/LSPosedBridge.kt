@@ -9,11 +9,11 @@ import java.lang.reflect.Member
 import java.lang.reflect.Modifier
 
 object LSPosedBridge {
-    val bridge = LSPlantHelper()
+    private val bridge = LSPlantHelper()
 
     fun createHook(target: Member, callback: XC_MethodHook): XC_MethodHook.Unhook {
         Timber.i("Hooking method with LSPosedBridge. Target is: $target")
-        VLoggingClient.get().log(LogMessage.HookAttach(target.name))
+        VLoggingClient.get().log(LogMessage.HookAttach(target.name, target.declaringClass.simpleName))
 
         return trace("Method hook") {
             hookMember(target, callback)

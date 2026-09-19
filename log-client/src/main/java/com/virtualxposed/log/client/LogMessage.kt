@@ -5,12 +5,11 @@ import android.os.Parcel
 import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
 
 
-// Awaiting @PolymorphicSealed from kotlin update to automatically manage parcelable
+// Awaiting @PolymorphicSealed from kotlin 2.5.0-Beta1 update to automatically manage parcelable
 /** Parcelable message to send to the logging service.
  * Parcelable instead of serializable to increase security against malicious log messages */
 @OptIn(ExperimentalSerializationApi::class)
@@ -47,6 +46,8 @@ sealed class LogMessage(
                         LogType.GetService -> GetService(parcel)
                         LogType.GetProvider -> GetProvider(parcel)
                         LogType.Exec -> Exec(parcel)
+                        LogType.AppInstall -> AppInstall(parcel)
+                        LogType.AppUninstall -> AppInstall(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -59,13 +60,15 @@ sealed class LogMessage(
     @SuppressLint("UnsafeOptInUsageError")
     @Serializable
     data class HookAttach(
+        val methodClass: String,
         val method: String
     ) : LogMessage(LogType.HookAttach) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!)
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(method)
+            parcel.writeString(methodClass)
         }
     }
 
@@ -241,6 +244,31 @@ sealed class LogMessage(
             parcel.writeString(packageName)
             parcel.writeString(componentName)
             parcel.writeInt(if (isExported) 1 else 0)
+        }
+    }
+
+
+    @Serializable
+    data class AppInstall(
+        val packageName: String,
+    ) : LogMessage(LogType.AppInstall) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!)
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(packageName)
+        }
+    }
+
+    @Serializable
+    data class AppUninstall(
+        val packageName: String,
+    ) : LogMessage(LogType.AppInstall) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!)
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(packageName)
         }
     }
 }
