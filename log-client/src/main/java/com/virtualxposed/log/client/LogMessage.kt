@@ -48,6 +48,7 @@ sealed class LogMessage(
                         LogType.Exec -> Exec(parcel)
                         LogType.AppInstall -> AppInstall(parcel)
                         LogType.AppUninstall -> AppInstall(parcel)
+                        LogType.UsePermission -> UsePermission(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -263,12 +264,25 @@ sealed class LogMessage(
     @Serializable
     data class AppUninstall(
         val packageName: String,
-    ) : LogMessage(LogType.AppInstall) {
+    ) : LogMessage(LogType.AppUninstall) {
         constructor(parcel: Parcel) : this(parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(packageName)
+        }
+    }
+
+
+    @Serializable
+    data class UsePermission(
+        val permission: String,
+    ) : LogMessage(LogType.UsePermission) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!)
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(permission)
         }
     }
 }

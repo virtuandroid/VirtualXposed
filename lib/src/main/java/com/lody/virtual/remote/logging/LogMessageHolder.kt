@@ -1,12 +1,14 @@
 package com.lody.virtual.remote.logging
 
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
 import android.os.Build
 import android.system.Os
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.os.VBinder
 import com.lody.virtual.os.VEnvironment
 import com.lody.virtual.os.VEnvironment.getPackageResourcePath
+import com.lody.virtual.server.permission.VPermissionManager
 import com.lody.virtual.server.pm.VPackageManagerService
 import com.virtualxposed.log.client.LogMessage
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -36,7 +38,7 @@ class LogMessageHolder private constructor(
 
         // private var hostPid: Int = Os.getpid()
         private var packageName: String? =
-            VPackageManagerService().getNameForUid(VBinder.getCallingUid())
+            VPackageManagerService.get().getNameForUid(VBinder.getCallingUid())
         private var timestamp: Long = System.currentTimeMillis()
 
         fun setPid(pid: Int): Builder {
@@ -86,6 +88,15 @@ class LogMessageHolder private constructor(
 
                 is LogMessage.GetProvider -> {
                     logMessage.packageName != packageName && !logMessage.isExported
+                }
+
+                is LogMessage.UsePermission -> {
+                    val permission = logMessage.permission
+                    val isGranted = runCatching {
+                        VPermissionManager.get().checkPermission(permission, VBinder.getCallingUid())
+                    }.getOrNull() == PackageManager.PERMISSION_GRANTED
+
+                    !isGranted
                 }
 
                 is LogMessage.AppKill -> {

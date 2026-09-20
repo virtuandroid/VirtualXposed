@@ -29,6 +29,7 @@ import android.text.TextUtils;
 import android.widget.Toast;
 
 import com.lody.virtual.R;
+import com.lody.virtual.client.AppOpsListener;
 import com.lody.virtual.client.VClientImpl;
 import com.lody.virtual.client.env.Constants;
 import com.lody.virtual.client.env.VirtualRuntime;
@@ -213,6 +214,14 @@ public final class VirtualCore {
             VMediaProvider.get();
             // Attach to the logging client
             VLoggingClient.get().attach(new VLoggingClientAttacher());
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    new AppOpsListener(context).start();
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
+            }
 
             isStartUp = true;
             if (initLock != null) {

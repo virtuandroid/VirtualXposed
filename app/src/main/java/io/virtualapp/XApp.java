@@ -8,7 +8,7 @@ import com.lody.virtual.client.NativeEngine;
 import com.lody.virtual.client.core.VirtualCore;
 import com.lody.virtual.client.stub.VASettings;
 
-import io.virtualapp.delegate.MyVirtualInitializer;
+import io.virtualapp.delegate.BaseVirtualInitializer;
 import timber.log.Timber;
 
 /**
@@ -46,7 +46,8 @@ public class XApp extends Application {
     public void onCreate() {
         super.onCreate();
         VirtualCore virtualCore = VirtualCore.get();
-        virtualCore.initialize(new MyVirtualInitializer(this, virtualCore));
+        virtualCore.initialize(new BaseVirtualInitializer(this, virtualCore));
+
         Timber.DebugTree tree = new Timber.DebugTree();
         Timber.plant(tree);
     }
