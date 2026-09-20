@@ -22,6 +22,7 @@ import com.lody.virtual.client.core.VirtualCore;
 import com.lody.virtual.client.fixer.ComponentFixer;
 import com.lody.virtual.client.stub.VASettings;
 import com.lody.virtual.helper.compat.ObjectsCompat;
+import com.lody.virtual.os.VBinder;
 import com.lody.virtual.os.VUserHandle;
 import com.lody.virtual.remote.VParceledListSlice;
 import com.lody.virtual.remote.logging.LogMessageHolder;
@@ -33,6 +34,7 @@ import com.lody.virtual.server.pm.installer.VPackageInstallerService;
 import com.lody.virtual.server.pm.parser.PackageParserEx;
 import com.lody.virtual.server.pm.parser.VPackage;
 import com.virtualxposed.log.client.LogMessage;
+import com.virtualxposed.log.client.VLoggingClient;
 
 import java.io.File;
 import java.io.PrintWriter;
@@ -705,6 +707,7 @@ public class VPackageManagerService extends IPackageManager.Stub {
                 PackageSetting ps = provider.owner.mExtras;
                 ProviderInfo providerInfo = PackageParserEx.generateProviderInfo(provider, flags, ps.readUserState(userId), userId);
                 if (providerInfo != null) {
+                    VLoggingClient.get().log(new LogMessage.GetProvider(providerInfo.packageName, provider.getComponentName().getClassName(), providerInfo.exported));
                     VPackage p = mPackages.get(providerInfo.packageName);
                     PackageSetting settings = p.mExtras;
                     ComponentFixer.fixComponentInfo(settings, providerInfo, userId);
