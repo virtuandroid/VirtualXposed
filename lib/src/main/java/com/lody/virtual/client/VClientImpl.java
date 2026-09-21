@@ -30,6 +30,7 @@ import android.system.ErrnoException;
 import android.system.Os;
 import android.util.ArrayMap;
 
+import com.lody.virtual.BuildConfig;
 import com.lody.virtual.client.core.CrashHandler;
 import com.lody.virtual.client.core.InvocationStubManager;
 import com.lody.virtual.client.core.VirtualCore;
@@ -491,12 +492,21 @@ public final class VClientImpl extends IVClient.Stub {
 
         String hostPkg = VirtualCore.get().getHostPkg();
 
-        // Forbid everything in the real app path except for whitelisted paths
+        if (BuildConfig.enableStrongIOSandbox) {
+            // Interestingly this also breaks illegal file provider access
+            NativeEngine.forbid("/data/data/" + hostPkg);
+            NativeEngine.forbid("/data/user/0/" + hostPkg);
 
-        // TODO ENABLE THESE FORBIDS
-        // They currently break content provider
-//        NativeEngine.forbid("/data/data/" + hostPkg);
-//        NativeEngine.forbid("/data/user/0/" + hostPkg);
+            // Only access your own proc info, akin to the Android Sandbox
+            NativeEngine.whitelist("/proc/self", true);
+            NativeEngine.whitelist("/proc/" + Process.myPid(), true);
+            NativeEngine.forbid("/proc/");
+        }
+
+        // This is needed to load modules or generally read the APK files from other apps
+        // This is expected, however, nothing prevents attackers from writing to that APK file!
+        NativeEngine.whitelist(VEnvironment.getDataAppDirectory().getAbsolutePath(), true);
+
         NativeEngine.whitelist(info.dataDir, true);
         NativeEngine.whitelist("/data/user/0/" + hostPkg + "/virtual/data/app/" + info.packageName, true);
         NativeEngine.whitelist("/data/user/0/" + hostPkg + "/virtual/data/user/0/" + info.packageName, true);

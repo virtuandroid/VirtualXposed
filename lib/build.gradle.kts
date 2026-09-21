@@ -11,6 +11,15 @@ android {
 
     defaultConfig {
         minSdk = 21
+
+        /**
+         * We use buildConfig to allow attack demonstrations without code changes
+         *
+         * `enableStrongIOSandbox` enables additional IO restictions which prevents attacks
+         * using /proc/ or File Providers
+         */
+        buildConfigField("boolean", "enableStrongIOSandbox", "true")
+
         externalNativeBuild {
             ndkBuild {
                 abiFilters("arm64-v8a", "x86_64")
@@ -48,6 +57,7 @@ android {
 
     buildFeatures {
         aidl = true
+        buildConfig = true
     }
 }
 

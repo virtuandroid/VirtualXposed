@@ -153,11 +153,14 @@ HOOK_DEF(int, openat, int fd, const char *pathname, int flags, int mode) {
     return ret;
 }
 
-// int __openat(int dfd, const char *pathname, struct open_how *how, size_t size);
-HOOK_DEF(int, __openat_2, int dfd, const char *pathname, struct open_how *how, size_t size) {
+// long syscall(SYS_openat2, int dirfd, const char *path, struct open_how *how, size_t size);
+HOOK_DEF(int, __openat_2, int dirfd, const char *pathname, int flags, mode_t mode) {
     int res;
     const char *redirect_path = relocate_path(pathname, &res);
-    int ret = syscall(__NR_openat2, dfd, redirect_path, how, size);
+
+    // __openat_2 syscall causes webview crashes!
+    int ret = syscall(__NR_openat, dirfd, redirect_path, flags, mode);
+
     FREE(redirect_path, pathname);
     return ret;
 }
@@ -660,8 +663,7 @@ void IOUniformer::startUniformer(const char *so_path, int api_level, int preview
         HOOK_SYMBOL(handle, __open_2);
 #endif
         HOOK_SYMBOL(handle, openat);
-        // __openat_2 hooking causes webview crashes!
-        // HOOK_SYMBOL(handle, __openat_2);
+        HOOK_SYMBOL(handle, __openat_2);
         HOOK_SYMBOL(handle, fchownat);
         HOOK_SYMBOL(handle, renameat);
         HOOK_SYMBOL(handle, fstatat64);

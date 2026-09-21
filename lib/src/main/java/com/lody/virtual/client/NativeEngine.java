@@ -57,11 +57,7 @@ public class NativeEngine {
         List<InstalledAppInfo> installedAppInfos = VirtualCore.get().getInstalledApps(0);
         sDexOverrideMap = new HashMap<>(installedAppInfos.size());
         for (InstalledAppInfo info : installedAppInfos) {
-            try {
-                sDexOverrideMap.put(new File(info.apkPath).getCanonicalPath(), info);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            sDexOverrideMap.put(new File(info.apkPath).getAbsolutePath(), info);
         }
     }
 
@@ -217,15 +213,11 @@ public class NativeEngine {
         VLoggingClient.get().log(new LogMessage.CodeLoad(dexOrJarPath, LogMessage.CodeLoadMethod.APK));
         String outputPath = params[1];
         VLog.d(TAG, "DexOrJarPath = %s, OutputPath = %s.", dexOrJarPath, outputPath);
-        try {
-            String canonical = new File(dexOrJarPath).getCanonicalPath();
-            InstalledAppInfo info = sDexOverrideMap.get(canonical);
-            if (info != null && !info.dependSystem || info != null && DeviceUtil.isMeizuBelowN() && params[1] == null) {
-                outputPath = info.getOdexFile().getPath();
-                params[1] = outputPath;
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+        String canonical = new File(dexOrJarPath).getAbsolutePath();
+        InstalledAppInfo info = sDexOverrideMap.get(canonical);
+        if (info != null && !info.dependSystem || info != null && DeviceUtil.isMeizuBelowN() && params[1] == null) {
+            outputPath = info.getOdexFile().getPath();
+            params[1] = outputPath;
         }
     }
 
