@@ -13,7 +13,7 @@ object LSPosedBridge {
 
     fun createHook(target: Member, callback: XC_MethodHook): XC_MethodHook.Unhook {
         Timber.i("Hooking method with LSPosedBridge. Target is: $target")
-        VLoggingClient.get().log(LogMessage.HookAttach(target.name, target.declaringClass.simpleName))
+        VLoggingClient.get().log(LogMessage.HookAttach(target.name, target.javaClass.simpleName, target.declaringClass.name))
 
         return trace("Method hook") {
             hookMember(target, callback)
@@ -40,14 +40,17 @@ object LSPosedBridge {
             params.args = actualArgs
             params.method = oldMethod
             params.thisObject = thisObject
+
             runCatching {
                 callback.beforeHookedMethod(params)
             }.onFailure { throwable ->
                 Timber.e(throwable)
+                params.throwable = throwable
             }
 
             if (params.returnEarly) {
                 return@hook params.result
+                // TODO Log early result!
             }
 
             try {

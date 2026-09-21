@@ -63,15 +63,17 @@ sealed class LogMessage(
     @SuppressLint("UnsafeOptInUsageError")
     @Serializable
     data class HookAttach(
-        val methodClass: String,
-        val method: String
+        val targetName: String,
+        val targetType: String,
+        val targetClass: String,
     ) : LogMessage(LogType.HookAttach) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!, parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
-            parcel.writeString(method)
-            parcel.writeString(methodClass)
+            parcel.writeString(targetName)
+            parcel.writeString(targetType)
+            parcel.writeString(targetClass)
         }
     }
 

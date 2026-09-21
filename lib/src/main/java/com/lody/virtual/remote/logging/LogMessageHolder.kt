@@ -2,7 +2,6 @@ package com.lody.virtual.remote.logging
 
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.os.Build
 import android.system.Os
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.os.VBinder
@@ -95,6 +94,26 @@ class LogMessageHolder private constructor(
                 is LogMessage.FingerprintChange -> {
                     // The fingerprint should never change at runtime
                     logMessage.changedFields.isNotEmpty()
+                }
+
+
+                is LogMessage.HookAttach -> {
+                    val dangerousPackage = listOf(
+                        "android.",
+                        "java.",
+                        "mirror.",
+                        "javax.",
+                        "com.lody.virtual",
+                        "de.robv.android",
+                        "me.weishu.exposed",
+                        "com.virtualxposed.lsplantbridge",
+                        "com.virtualxposed.log",
+                        "org.chickenhook.restrictionbypass"
+                    )
+                    // Dangerous to hook VirtualXposed or Android/Java references. Hooks should only affect the app code.
+                    dangerousPackage.any {
+                        logMessage.targetClass.startsWith(it)
+                    }
                 }
 
                 is LogMessage.UsePermission -> {

@@ -493,9 +493,12 @@ public final class VClientImpl extends IVClient.Stub {
         String hostPkg = VirtualCore.get().getHostPkg();
 
         if (BuildConfig.enableStrongIOSandbox) {
-            // Interestingly this also breaks illegal file provider access
-            NativeEngine.forbid("/data/data/" + hostPkg);
-            NativeEngine.forbid("/data/user/0/" + hostPkg);
+            // TODO: FIX - Forbid breaks some expected features such as canonical path and lstat
+            // TODO: This is most noticeable in Xposed installer SQL database
+            // Interestingly this also breaks illegal file provider access (That is good)
+
+            // NativeEngine.forbid("/data/data/" + hostPkg);
+            // NativeEngine.forbid("/data/user/0/" + hostPkg);
 
             // Only access your own proc info, akin to the Android Sandbox
             NativeEngine.whitelist("/proc/self", true);
