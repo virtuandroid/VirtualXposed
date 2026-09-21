@@ -24,6 +24,26 @@ object NativeHelper {
         VLoggingClient.get().log(LogMessage.Exec(path))
     }
 
+
+    @JvmStatic
+    fun logNativeSocket(fd: Int, peerPid: Int) {
+        // Not interesting if the peerPid is undefined
+        // The goal of this logging is to catch inter-process socket connects
+        if (peerPid <= 0) {
+            return
+        }
+
+        val context = getGlobalContext()
+        val activityManager =
+            context?.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+
+        val processName =
+            activityManager?.runningAppProcesses?.firstOrNull { it.pid == peerPid }?.processName
+
+        VLoggingClient.get().log(LogMessage.SocketConnect(fd, peerPid, processName))
+    }
+
+
     @JvmStatic
     fun logNativeKill(pid: Int) {
         val context = getGlobalContext()

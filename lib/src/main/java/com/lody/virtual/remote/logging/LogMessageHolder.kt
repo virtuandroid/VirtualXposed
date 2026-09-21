@@ -73,7 +73,9 @@ class LogMessageHolder private constructor(
                     // Dynamic code loading from storage is classified as dangerous
                     // Apps should only use bundled native code
                     val isBundledCode =
-                        logMessage.path.startsWith(appDir) && pathSuffix == "base.apk" || pathSuffix.startsWith("base.apk!")
+                        logMessage.path.startsWith(appDir) && pathSuffix == "base.apk" || pathSuffix.startsWith(
+                            "base.apk!"
+                        )
 
                     !isSystem && !isBundledCode
                 }
@@ -93,10 +95,20 @@ class LogMessageHolder private constructor(
                 is LogMessage.UsePermission -> {
                     val permission = logMessage.permission
                     val isGranted = runCatching {
-                        VPermissionManager.get().checkPermission(permission, VBinder.getCallingUid())
+                        VPermissionManager.get()
+                            .checkPermission(permission, VBinder.getCallingUid())
                     }.getOrNull() == PackageManager.PERMISSION_GRANTED
 
                     !isGranted
+                }
+
+                is LogMessage.SocketConnect -> {
+                    val pkgName = packageName
+                    val processName = logMessage.peerProcessName
+
+                    // Dangerous if processName does not start with the packageName
+                    // E.g. if one app is connecting to another apps' socket
+                    (processName != null) && (pkgName != null) && !processName.startsWith(pkgName)
                 }
 
                 is LogMessage.AppKill -> {
@@ -104,7 +116,7 @@ class LogMessageHolder private constructor(
                     val processName = logMessage.processName
 
                     // Dangerous if processName does not start with the packageName
-                    // E.g. if one app is killing another app
+                    // E.g. if one app is killing another app. The Android sandbox prevents cross-app killing.
                     (processName != null) && (pkgName != null) && !processName.startsWith(pkgName)
                 }
 

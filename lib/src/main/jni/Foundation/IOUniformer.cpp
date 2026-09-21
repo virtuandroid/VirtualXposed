@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <fb/include/fb/ALog.h>
+#include <sys/socket.h>
 
 #ifdef __x86_64__
 #include <x86_64-linux-android/asm/unistd_64.h>
@@ -517,6 +518,21 @@ HOOK_DEF(void*, dlsym, void *handle, char *symbol) {
     return orig_dlsym(handle, symbol);
 }
 
+// int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+HOOK_DEF(int, connect, int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    ALOGD(">>>>> connect >>> fd: %d.", sockfd);
+
+    struct ucred creds;
+    socklen_t len = sizeof(creds);
+    int ret = syscall(__NR_connect, sockfd, addr, addrlen);
+    if (getsockopt(sockfd, SOL_SOCKET, SO_PEERCRED, &creds, &len) == 0) {
+        log_socket(sockfd, creds.pid);
+    } else {
+        ALOGD("getsockopt SO_PEERCRED failed");
+    }
+    return ret;
+}
+
 // int kill(pid_t pid, int sig);
 HOOK_DEF(int, kill, pid_t pid, int sig) {
     ALOGD(">>>>> kill >>> pid: %d, sig: %d.", pid, sig);
@@ -662,6 +678,7 @@ void IOUniformer::startUniformer(const char *so_path, int api_level, int preview
         HOOK_SYMBOL(handle, execve);
         HOOK_SYMBOL(handle, statfs64);
         HOOK_SYMBOL(handle, kill);
+        HOOK_SYMBOL(handle, connect);
         dlclose(handle);
     }
 

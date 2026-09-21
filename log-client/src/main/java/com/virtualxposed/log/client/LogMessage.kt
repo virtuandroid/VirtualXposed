@@ -49,6 +49,7 @@ sealed class LogMessage(
                         LogType.AppInstall -> AppInstall(parcel)
                         LogType.AppUninstall -> AppInstall(parcel)
                         LogType.UsePermission -> UsePermission(parcel)
+                        LogType.SocketConnect -> SocketConnect(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -283,6 +284,23 @@ sealed class LogMessage(
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(permission)
+        }
+    }
+
+
+    @Serializable
+    data class SocketConnect(
+        val fd: Int,
+        val peerPid: Int?,
+        val peerProcessName: String?,
+    ) : LogMessage(LogType.SocketConnect) {
+        constructor(parcel: Parcel) : this(parcel.readInt(), parcel.readInt(), parcel.readString())
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeInt(fd)
+            parcel.writeInt(peerPid ?: -1)
+            parcel.writeString(peerProcessName)
         }
     }
 }
