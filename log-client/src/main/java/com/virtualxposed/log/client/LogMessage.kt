@@ -50,6 +50,7 @@ sealed class LogMessage(
                         LogType.AppUninstall -> AppInstall(parcel)
                         LogType.UsePermission -> UsePermission(parcel)
                         LogType.SocketConnect -> SocketConnect(parcel)
+                        LogType.FingerprintChange -> FingerprintChange(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -301,6 +302,20 @@ sealed class LogMessage(
             parcel.writeInt(fd)
             parcel.writeInt(peerPid ?: -1)
             parcel.writeString(peerProcessName)
+        }
+    }
+
+
+    @Serializable
+    data class FingerprintChange(
+        val changedFields: List<String>,
+    ) : LogMessage(LogType.FingerprintChange) {
+        constructor(parcel: Parcel) : this(mutableListOf<String>().also { parcel.readStringList(it) })
+        constructor(changedFields: Set<String>) : this(changedFields.toList())
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeStringList(changedFields)
         }
     }
 }

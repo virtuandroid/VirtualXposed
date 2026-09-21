@@ -30,6 +30,7 @@ import android.widget.Toast;
 
 import com.lody.virtual.R;
 import com.lody.virtual.client.AppOpsListener;
+import com.lody.virtual.client.FingerprintListener;
 import com.lody.virtual.client.VClientImpl;
 import com.lody.virtual.client.env.Constants;
 import com.lody.virtual.client.env.VirtualRuntime;
@@ -222,6 +223,8 @@ public final class VirtualCore {
                     t.printStackTrace();
                 }
             }
+
+            new FingerprintListener(context).start();
 
             isStartUp = true;
             if (initLock != null) {

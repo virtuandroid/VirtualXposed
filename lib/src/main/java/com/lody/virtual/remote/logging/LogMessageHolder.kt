@@ -92,6 +92,11 @@ class LogMessageHolder private constructor(
                     logMessage.packageName != packageName && !logMessage.isExported
                 }
 
+                is LogMessage.FingerprintChange -> {
+                    // The fingerprint should never change at runtime
+                    logMessage.changedFields.isNotEmpty()
+                }
+
                 is LogMessage.UsePermission -> {
                     val permission = logMessage.permission
                     val isGranted = runCatching {

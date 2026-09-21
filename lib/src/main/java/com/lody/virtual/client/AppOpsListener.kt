@@ -22,7 +22,7 @@ class AppOpsListener(val context: Context) {
 
             override fun onNoted(op: SyncNotedAppOp) {
                 val permission = opToPermission(op.op) ?: return
-                   VLoggingClient.log(LogMessage.UsePermission(permission))
+                VLoggingClient.log(LogMessage.UsePermission(permission))
             }
 
             override fun onSelfNoted(op: SyncNotedAppOp) {
