@@ -96,6 +96,9 @@ class LogMessageHolder private constructor(
                     logMessage.changedFields.isNotEmpty()
                 }
 
+                is LogMessage.FileAccess -> {
+                    logMessage.forbidden
+                }
 
                 is LogMessage.HookAttach -> {
                     val dangerousPackage = listOf(

@@ -130,6 +130,10 @@ void IOUniformer::forbid(const char *_path) {
     add_forbidden_item(_path);
 }
 
+void IOUniformer::log(const char *_path) {
+    add_log_item(_path);
+}
+
 
 const char *IOUniformer::reverse(const char *_path) {
     return reverse_relocate_path(_path);

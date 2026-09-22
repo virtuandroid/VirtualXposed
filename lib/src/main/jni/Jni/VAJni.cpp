@@ -38,11 +38,15 @@ static void jni_nativeIOForbid(alias_ref<jclass> jclazz, jstring _path) {
 }
 
 
+static void jni_nativeIOLog(alias_ref<jclass> jclazz, jstring _path) {
+    ScopeUtfString path(_path);
+    IOUniformer::log(path.c_str());
+}
+
 static void jni_nativeIORedirect(alias_ref<jclass> jclazz, jstring origPath, jstring newPath) {
     ScopeUtfString orig_path(origPath);
     ScopeUtfString new_path(newPath);
     IOUniformer::redirect(orig_path.c_str(), new_path.c_str());
-
 }
 
 static jstring jni_nativeGetRedirectedPath(alias_ref<jclass> jclazz, jstring origPath) {
@@ -83,6 +87,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
                                          jni_nativeIOWhitelist),
                         makeNativeMethod("nativeIOForbid",
                                          jni_nativeIOForbid),
+                        makeNativeMethod("nativeIOLog",
+                                         jni_nativeIOLog),
                         makeNativeMethod("nativeIORedirect",
                                          jni_nativeIORedirect),
                         makeNativeMethod("nativeGetRedirectedPath",

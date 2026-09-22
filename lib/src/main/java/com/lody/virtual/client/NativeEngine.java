@@ -136,6 +136,20 @@ public class NativeEngine {
         }
     }
 
+    /** Log all file access to this path, except for whitelisted paths, to prevent log clutter. */
+    public static void log(String path) {
+        Timber.d("Notify path: %s", path);
+
+        if (!path.endsWith("/")) {
+            path = path + "/";
+        }
+        try {
+            nativeIOLog(path);
+        } catch (Throwable e) {
+            VLog.e(TAG, VLog.getStackTraceString(e));
+        }
+    }
+
     public static void forbid(String path) {
         Timber.d("Forbid path: %s", path);
 
@@ -236,6 +250,8 @@ public class NativeEngine {
     private static native void nativeIOWhitelist(String path);
 
     private static native void nativeIOForbid(String path);
+
+    private static native void nativeIOLog(String path);
 
     private static native void nativeEnableIORedirect(String selfSoPath, int apiLevel, int previewApiLevel);
 

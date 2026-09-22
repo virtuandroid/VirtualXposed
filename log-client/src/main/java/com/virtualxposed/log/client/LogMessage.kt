@@ -37,7 +37,7 @@ sealed class LogMessage(
                         LogType.AppLoad -> AppLoad()
                         LogType.AppKill -> AppKill(parcel)
                         LogType.AppDeath -> AppDeath()
-                        LogType.FileOpen -> FileOpen(parcel)
+                        LogType.FileAccess -> FileAccess(parcel)
                         LogType.HookExecution -> HookExecution(parcel)
                         LogType.ModuleLoad -> ModuleLoad(parcel)
                         LogType.BroadcastReceived -> BroadCastReceived(parcel)
@@ -92,14 +92,16 @@ sealed class LogMessage(
 
     @SuppressLint("UnsafeOptInUsageError")
     @Serializable
-    data class FileOpen(
-        val path: String
-    ) : LogMessage(LogType.FileOpen) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!)
+    data class FileAccess(
+        val path: String,
+        val forbidden: Boolean
+    ) : LogMessage(LogType.FileAccess) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readInt() == 1)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(path)
+            parcel.writeInt(if (forbidden) 1 else 0)
         }
     }
 

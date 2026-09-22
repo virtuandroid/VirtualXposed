@@ -54,4 +54,9 @@ object NativeHelper {
 
         VLoggingClient.get().log(LogMessage.AppKill(pid, processName))
     }
+
+    @JvmStatic
+    fun logNativeFileAccess(path: String, forbid: Boolean) {
+        VLoggingClient.get().log(LogMessage.FileAccess(path, forbid))
+    }
 }

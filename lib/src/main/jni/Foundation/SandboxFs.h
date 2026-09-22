@@ -2,7 +2,7 @@
 #define SANDBOX_FS_H
 
 #include <string>
-#include <errno.h>
+#include <cerrno>
 
 typedef struct PathItem {
     char *path;
@@ -35,6 +35,8 @@ const char *reverse_relocate_path(const char *_path);
 int reverse_relocate_path_inplace(char *_path, size_t size);
 
 int add_keep_item(const char *path);
+
+int add_log_item(const char *path);
 
 int add_forbidden_item(const char *path);
 

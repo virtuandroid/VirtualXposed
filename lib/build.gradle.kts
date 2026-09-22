@@ -18,7 +18,7 @@ android {
          * `enableStrongIOSandbox` enables additional IO restictions which prevents attacks
          * using /proc/ or File Providers
          */
-        buildConfigField("boolean", "enableStrongIOSandbox", "true")
+        buildConfigField("boolean", "enableStrongIOSandbox", "false")
 
         externalNativeBuild {
             ndkBuild {

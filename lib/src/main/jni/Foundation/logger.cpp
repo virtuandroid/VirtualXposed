@@ -28,6 +28,7 @@ static jclass g_helperClass = nullptr;
 static jmethodID g_logExecMethod = nullptr;
 static jmethodID g_logKillMethod = nullptr;
 static jmethodID g_logSocketMethod = nullptr;
+static jmethodID g_logFileAccessMethod = nullptr;
 
 void log_kill(pid_t pid) {
     facebook::jni::Environment::ensureCurrentThreadIsAttached();
@@ -50,6 +51,21 @@ void log_exec(const char *filename) {
     if (jPath != nullptr) {
 
         env->CallStaticVoidMethod(g_helperClass, g_logExecMethod, jPath);
+        env->DeleteLocalRef(jPath);
+    }
+}
+
+void log_file_access(const char *filename, bool forbid) {
+    if (filename == nullptr) return;
+
+    facebook::jni::Environment::ensureCurrentThreadIsAttached();
+    JNIEnv *env = facebook::jni::Environment::current();
+
+    if (env == nullptr || g_helperClass == nullptr || g_logFileAccessMethod == nullptr) return;
+
+    jstring jPath = env->NewStringUTF(filename);
+    if (jPath != nullptr) {
+        env->CallStaticVoidMethod(g_helperClass, g_logFileAccessMethod, jPath, forbid);
         env->DeleteLocalRef(jPath);
     }
 }
@@ -141,5 +157,11 @@ void init_log_classes(JNIEnv *env) {
             g_helperClass,
             "logNativeSocket",
             "(II)V"
+    );
+
+    g_logFileAccessMethod = env->GetStaticMethodID(
+            g_helperClass,
+            "logNativeFileAccess",
+            "(Ljava/lang/String;Z)V"
     );
 }

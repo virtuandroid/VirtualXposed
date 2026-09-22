@@ -500,11 +500,13 @@ public final class VClientImpl extends IVClient.Stub {
             // NativeEngine.forbid("/data/data/" + hostPkg);
             // NativeEngine.forbid("/data/user/0/" + hostPkg);
 
-            // Only access your own proc info, akin to the Android Sandbox
-            NativeEngine.whitelist("/proc/self", true);
-            NativeEngine.whitelist("/proc/" + Process.myPid(), true);
             NativeEngine.forbid("/proc/");
         }
+
+        // Only access your own proc info, akin to the Android Sandbox
+        NativeEngine.whitelist("/proc/self", true);
+        NativeEngine.whitelist("/proc/" + Process.myPid(), true);
+        NativeEngine.log("/proc/");
 
         // This is needed to load modules or generally read the APK files from other apps
         // This is expected, however, nothing prevents attackers from writing to that APK file!

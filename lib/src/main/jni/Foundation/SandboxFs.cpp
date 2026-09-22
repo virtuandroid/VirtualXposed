@@ -1,13 +1,17 @@
 #include <stdlib.h>
 #include "SandboxFs.h"
 #include "Path.h"
+#include "logger.h"
+#include <fb/include/fb/ALog.h>
 
 PathItem *keep_items;
 PathItem *forbidden_items;
+PathItem *log_items;
 ReplaceItem *replace_items;
 int keep_item_count;
 int forbidden_item_count;
 int replace_item_count;
+int log_item_count;
 
 int add_keep_item(const char *path) {
     char keep_env_name[25];
@@ -33,6 +37,20 @@ int add_forbidden_item(const char *path) {
     item.size = strlen(path);
     item.is_folder = (path[strlen(path) - 1] == '/');
     return ++forbidden_item_count;
+}
+
+int add_log_item(const char *path) {
+    char log_env_name[25];
+    sprintf(log_env_name, "V_LOG_ITEM_%d", log_item_count);
+    setenv(log_env_name, path, 1);
+    log_items = (PathItem *) realloc(log_items,
+                                           log_item_count * sizeof(PathItem) +
+                                           sizeof(PathItem));
+    PathItem &item = log_items[log_item_count];
+    item.path = strdup(path);
+    item.size = strlen(path);
+    item.is_folder = (path[strlen(path) - 1] == '/');
+    return ++log_item_count;
 }
 
 int add_replace_item(const char *orig_path, const char *new_path) {
@@ -125,6 +143,18 @@ const char *relocate_path(const char *_path, int *result) {
             return strdup(redirect_path.c_str());
         }
     }
+
+    // Do not log whitelisted items, since it pollutes log
+    // This makes is possible to log /proc/ but not /proc/self easily
+    if (*result != KEEP) {
+        for (int i = 0; i < log_item_count; ++i) {
+            PathItem &item = log_items[i];
+            if (match_path(item.is_folder, item.size, item.path, path)) {
+                log_file_access(path, *result == FORBID);
+            }
+        }
+    }
+
     *result = NOT_MATCH;
     return _path;
 }
