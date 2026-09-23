@@ -97,6 +97,11 @@ class FileCloneDetector {
                         return@forEach
                     }
 
+                    // Ignore cache files
+                    if (originalFilePath.startsWith("/cache/")) {
+                        return
+                    }
+
                     areFilesIdentical(realFile, otherFile)
                 }
 
