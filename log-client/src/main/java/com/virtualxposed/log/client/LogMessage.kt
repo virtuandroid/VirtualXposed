@@ -51,6 +51,7 @@ sealed class LogMessage(
                         LogType.UsePermission -> UsePermission(parcel)
                         LogType.SocketConnect -> SocketConnect(parcel)
                         LogType.FingerprintChange -> FingerprintChange(parcel)
+                        LogType.FileIdentical -> FileIdentical(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -322,5 +323,21 @@ sealed class LogMessage(
             parcel.writeStringList(changedFields)
         }
     }
+
+    @Serializable
+    /** Used to detect session cloning */
+    data class FileIdentical(
+        val originalFilePath: String,
+        val fileCopyPath: String,
+    ) : LogMessage(LogType.FileIdentical) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(originalFilePath)
+            parcel.writeString(fileCopyPath)
+        }
+    }
+
 }
 

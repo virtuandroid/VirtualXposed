@@ -284,6 +284,10 @@ public final class VClientImpl extends IVClient.Stub {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && targetSdkVersion < Build.VERSION_CODES.LOLLIPOP) {
             mirror.android.os.Message.updateCheckRecycle.call(targetSdkVersion);
         }
+
+        // Detect cloned account execution
+        new FileCloneDetector().start(packageName);
+
         if (VASettings.ENABLE_IO_REDIRECT) {
             startIOUniformer();
         }

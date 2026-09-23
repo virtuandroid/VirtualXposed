@@ -24,5 +24,6 @@ enum class LogType : Parcelable {
     AppUninstall,
     UsePermission,
     FingerprintChange,
+    FileIdentical,
     FileAccess;
 }
