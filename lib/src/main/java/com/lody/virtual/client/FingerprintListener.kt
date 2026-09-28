@@ -93,7 +93,7 @@ class FingerprintListener(val context: Context) {
             manufacturer = Build.MANUFACTURER,
             model = Build.MODEL,
             product = Build.PRODUCT,
-            radioVersion = runCatching { Build.getRadioVersion() }.getOrDefault("UNKNOWN"),
+            radioVersion = runCatching { Build.getRadioVersion() }.getOrNull() ?: "UNKNOWN",
             tags = Build.TAGS,
             time = Build.TIME,
             type = Build.TYPE,
