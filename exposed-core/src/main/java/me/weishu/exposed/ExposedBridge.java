@@ -59,43 +59,11 @@ import com.virtualxposed.log.client.VLoggingClient;
 
 
 public class ExposedBridge {
-
-    private static final String TAG = "ExposedBridge";
-
-    private static final String XPOSED_INSTALL_PACKAGE = "de.robv.android.xposed.installer";
-
-    @SuppressLint("SdCardPath")
-    private static final String BASE_DIR_LEGACY = "/data/data/de.robv.android.xposed.installer/";
-
-    public static final String BASE_DIR = Build.VERSION.SDK_INT >= 24
-            ? "/data/user_de/0/de.robv.android.xposed.installer/" : BASE_DIR_LEGACY;
-
-    private static final String WECHAT = decodeFromBase64("Y29tLnRlbmNlbnQubW0=");
-    private static final String QQ = decodeFromBase64("Y29tLnRlbmNlbnQubW9iaWxlcXE=");
-
-    private static final int FAKE_XPOSED_VERSION = 91;
-    private static final String VERSION_KEY = "version";
-    private static boolean SYSTEM_CLASSLOADER_INJECT = false;
-
-    private static Pair<String, Set<String>> lastModuleList = Pair.create(null, null);
-    private static Map<ClassLoader, ClassLoader> exposedClassLoaderMap = new HashMap<>();
+    private static final Map<ClassLoader, ClassLoader> exposedClassLoaderMap = new HashMap<>();
     private static ClassLoader xposedClassLoader;
-
     private static Context appContext;
     private static String currentPackage;
-
-    private volatile static boolean wcdbLoaded = false;
-    private static ModuleLoadListener sModuleLoadListener = new ModuleLoadListener() {
-        @Override
-        public void onLoadingModule(String moduleClassName, ApplicationInfo applicationInfo, ClassLoader appClassLoader) {
-        }
-
-        @Override
-        public void onModuleLoaded(String moduleName, ApplicationInfo applicationInfo, ClassLoader appClassLoader) {
-            initForWeChatTranslate(moduleName, applicationInfo, appClassLoader);
-        }
-    };
-
+    private static boolean SYSTEM_CLASSLOADER_INJECT = false;
     /**
      * Module load result
      */
@@ -108,21 +76,13 @@ public class ExposedBridge {
         IGNORED
     }
 
-    @SuppressWarnings("deprecation")
     public static void initOnce(Context context, ApplicationInfo applicationInfo, ClassLoader appClassLoader) {
         // SYSTEM_CLASSLOADER_INJECT = patchSystemClassLoader();
-        XposedBridge.XPOSED_BRIDGE_VERSION = FAKE_XPOSED_VERSION;
         appContext = context;
         initForPackage(context, applicationInfo);
-
-//        ReLinker.loadLibrary(context, "lsplantbridge");
         System.loadLibrary("lsplantbridge");
         ExposedHelper.initSeLinux(applicationInfo.processName);
         XSharedPreferences.setPackageBaseDirectory(new File(applicationInfo.dataDir).getParentFile());
-
-        initForXposedInstaller(context, applicationInfo, appClassLoader);
-        initForWechat(context, applicationInfo, appClassLoader);
-        initForQQ(context, applicationInfo, appClassLoader);
     }
 
     private static void initForPackage(Context context, ApplicationInfo applicationInfo) {
@@ -182,20 +142,8 @@ public class ExposedBridge {
 
     public static ModuleLoadResult loadModule(final String moduleApkPath, String moduleOdexDir, String moduleLibPath,
                                               final ApplicationInfo currentApplicationInfo, ClassLoader appClassLoader) {
-
         if (filterApplication(currentApplicationInfo)) {
             return ModuleLoadResult.IGNORED;
-        }
-
-        final String userRoot = new File(currentApplicationInfo.dataDir).getParentFile().getParent();
-        // Always load modules from user 0 config, since Xposed installer is not clonable
-        final String rootDir = userRoot + "/0/";
-
-        loadModuleConfig(rootDir, currentApplicationInfo.processName);
-
-        if (lastModuleList.second == null || !lastModuleList.second.contains(moduleApkPath)) {
-            // Timber.d("Module: %s is disabled, ignore",  moduleApkPath);
-            return ModuleLoadResult.DISABLED;
         }
 
         Timber.i("Loading modules from: %s for process: %s",  moduleApkPath,  currentApplicationInfo.processName );
@@ -235,15 +183,9 @@ public class ExposedBridge {
                 if (moduleClassName.isEmpty() || moduleClassName.startsWith("#"))
                     continue;
 
-                if (filterModuleForApp(currentApplicationInfo, moduleClassName)) {
-                    XposedBridge.log("ignore module: " + moduleClassName + " for application: " + currentApplicationInfo.packageName);
-                    continue;
-                }
                 try {
                     Timber.i("Loading class %s", moduleClassName);
                     Class<?> moduleClass = mcl.loadClass(moduleClassName);
-
-                    sModuleLoadListener.onLoadingModule(moduleClassName, currentApplicationInfo, mcl);
 
                     if (!ExposedHelper.isIXposedMod(moduleClass)) {
                         log("    This class doesn't implement any sub-interface of IXposedMod, skipping it");
@@ -277,9 +219,6 @@ public class ExposedBridge {
                         // hookInitPackageResources(new IXposedHookInitPackageResources.Wrapper((IXposedHookInitPackageResources) moduleInstance));
                         // TODO: 17/12/1 Support Resource hook
                     }
-
-                    sModuleLoadListener.onModuleLoaded(moduleClassName, currentApplicationInfo, mcl);
-
                 } catch (Throwable t) {
                     log(t);
                 }
@@ -293,54 +232,13 @@ public class ExposedBridge {
         return ModuleLoadResult.FAILED;
     }
 
-    private static boolean ignoreHooks(Member member) {
-        if (member == null) {
-            return false;
-        }
-
-        String name = member.getDeclaringClass().getName();
-        if (QQ.equals(currentPackage)) {
-            // TODO, we just ignore this hook to avoid crash, fix it when you figure out it. (getManager)
-            if (name.contains("QQAppInterface")) {
-                // Log.i("mylog", "ignore hook for: " + member);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static void presetMethod(Member method) {
         if (method == null) {
             return;
         }
-
-        if (WECHAT.equals(currentPackage)) {
-            Class<?> declaringClass = method.getDeclaringClass();
-            if (declaringClass.getName().contains("wcdb")) {
-                if (!wcdbLoaded) {
-                    ClassLoader loader = declaringClass.getClassLoader();
-                    Class<?> sqliteDataBaseClass = null;
-                    try {
-                        sqliteDataBaseClass = loader.loadClass("com.tencent.wcdb.database.SQLiteDatabase");
-                    } catch (ClassNotFoundException ignored) {
-                        XposedBridge.log("preload sqlite class failed!!!");
-                    }
-                    if (sqliteDataBaseClass == null) {
-                        return;
-                    }
-
-                    wcdbLoaded = true;
-                }
-            }
-        }
     }
 
     public static XC_MethodHook.Unhook hookMethod(Member method, XC_MethodHook callback) {
-        if (ignoreHooks(method)) {
-            return null;
-        }
-
         presetMethod(method);
 
         final XC_MethodHook.Unhook unhook = LSPosedBridge.INSTANCE.createHook(method, callback);
@@ -353,249 +251,8 @@ public class ExposedBridge {
         return LSPosedBridge.INSTANCE.invokeOriginalMethod(method, thisObject, args);
     }
 
-    private static boolean isXposedInstaller(ApplicationInfo applicationInfo) {
-        return XPOSED_INSTALL_PACKAGE.equals(applicationInfo.packageName);
-    }
-
     private static boolean filterApplication(ApplicationInfo applicationInfo) {
-        if (applicationInfo == null) {
-            return true;
-        }
-
-        if (isXposedInstaller(applicationInfo)) {
-            return true;
-        }
-
-        if (decodeFromBase64("Y29tLnRlbmNlbnQubW06cHVzaA==").equalsIgnoreCase(applicationInfo.processName)) {
-            // com.tencent.mm:push
-            XposedBridge.log("ignore process for wechat push.");
-            return true;
-        }
-
-        return false;
-    }
-
-    private static boolean filterModuleForApp(ApplicationInfo applicationInfo, String moduleEntry) {
-        if (applicationInfo == null || applicationInfo.packageName == null) {
-            return false;
-        }
-
-        final String WECHAT_JUMP_HELPER = "com.emily.mmjumphelper.xposed.XposedMain";
-
-        if (WECHAT.equals(applicationInfo.packageName)) {
-            if (applicationInfo.processName.contains("appbrand")) {
-                // wechat app brand
-                if (WECHAT_JUMP_HELPER.equals(moduleEntry)) {
-                    // now only load module for appbrand.
-                    return false;
-                } else {
-                    return true;
-                }
-            } else {
-                if (WECHAT_JUMP_HELPER.equals(moduleEntry)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static void initForXposedInstaller(Context context, ApplicationInfo applicationInfo, ClassLoader appClassLoader) {
-        if (!isXposedInstaller(applicationInfo)) {
-            return;
-        }
-
-        // XposedInstaller
-        final String fakeVersionString = String.valueOf(FAKE_XPOSED_VERSION);
-        final File xposedProp = context.getFileStreamPath("xposed_prop");
-        if (!xposedProp.exists()) {
-            writeXposedProperty(xposedProp, fakeVersionString, false);
-        } else {
-            log("xposed config file exists, check version");
-            String oldVersion = getXposedVersionFromProperty(xposedProp);
-            if (!fakeVersionString.equals(oldVersion)) {
-                writeXposedProperty(xposedProp, fakeVersionString, true);
-            } else {
-                Log.i(TAG, "xposed version keep same, continue.");
-            }
-        }
-
-        final Class<?> xposedApp = XposedHelpers.findClass("de.robv.android.xposed.installer.XposedApp", appClassLoader);
-        try {
-            final Object xposed_prop_files = XposedHelpers.getStaticObjectField(xposedApp, "XPOSED_PROP_FILES");
-            final int length = Array.getLength(xposed_prop_files);
-            String xposedPropPath = xposedProp.getPath();
-            for (int i = 0; i < length; i++) {
-                Array.set(xposed_prop_files, i, xposedPropPath);
-            }
-
-
-            XposedHelpers.findAndHookMethod(xposedApp, "getActiveXposedVersion", new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    super.beforeHookedMethod(param);
-                    param.setResult(FAKE_XPOSED_VERSION);
-                }
-            });
-            XposedHelpers.findAndHookMethod(xposedApp, "getInstalledXposedVersion", new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
-                    super.beforeHookedMethod(param);
-                    param.setResult(FAKE_XPOSED_VERSION);
-                }
-            });
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // fix bug on Android O: https://github.com/emilsjolander/StickyListHeaders/issues/477
-                Class<?> stickyListHeadersClass = XposedHelpers.findClass("se.emilsjolander.stickylistheaders.StickyListHeadersListView", appClassLoader);
-                XposedHelpers.findAndHookMethod(stickyListHeadersClass, "onSaveInstanceState", new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        super.beforeHookedMethod(param);
-                        param.setResult(AbsSavedState.EMPTY_STATE);
-                        Field mPrivateFlags = XposedHelpers.findField(View.class, "mPrivateFlags");
-                        int flags = mPrivateFlags.getInt(param.thisObject);
-                        mPrivateFlags.set(param.thisObject, flags | 0x00020000);
-                    }
-                });
-            }
-        } catch (Throwable ignored) {
-            // only support 3.1.5 and above.
-            try {
-                Toast.makeText(context, "The XposedInstaller you used is not supported.", Toast.LENGTH_SHORT).show();
-            } catch (Throwable ignored2) {
-            }
-        }
-
-        final Constructor<?> fileConstructor1 = XposedHelpers.findConstructorExact(File.class, String.class);
-        final Constructor<?> fileConstructor2 = XposedHelpers.findConstructorExact(File.class, String.class, String.class);
-        final String dataDir = applicationInfo.dataDir;
-        XposedBridge.hookMethod(fileConstructor1, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                super.beforeHookedMethod(param);
-                final String path = (String) param.args[0];
-                if (path.startsWith(BASE_DIR)) {
-                    param.args[0] = path.replace(BASE_DIR, path.equals(BASE_DIR) ? dataDir : dataDir + "/exposed_");
-                }
-            }
-        });
-        XposedBridge.hookMethod(fileConstructor2, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                super.beforeHookedMethod(param);
-                final String path = (String) param.args[0];
-                if (path.startsWith(BASE_DIR)) {
-                    param.args[0] = path.replace(BASE_DIR, path.equals(BASE_DIR) ? dataDir : dataDir + "/exposed_");
-                }
-            }
-        });
-
-
-    }
-
-
-    private static void initForWeChatTranslate(String moduleClassName, ApplicationInfo applicationInfo, ClassLoader appClassLoader) {
-        if (!"com.hkdrjxy.wechart.xposed.XposedInit".equals(moduleClassName)) {
-            return;
-        }
-
-        if (!("com.hiwechart.translate".equals(applicationInfo.processName) || "com.tencent.mm".equals(applicationInfo.processName))) {
-            return;
-        }
-
-        final IBinder[] translateService = new IBinder[1];
-        Intent intent = new Intent();
-        intent.setAction("com.hiwechart.translate.aidl.TranslateService");
-        ComponentName v2 = new ComponentName("com.hiwechart.translate", "com.hiwechart.translate.aidl.TranslateService");
-        intent.setComponent(v2);
-        appContext.bindService(intent, new ServiceConnection() {
-            @Override
-            public void onServiceConnected(ComponentName name, IBinder service) {
-                translateService[0] = service;
-            }
-
-            @Override
-            public void onServiceDisconnected(ComponentName name) {
-
-            }
-        }, Context.BIND_AUTO_CREATE);
-
-        Class<?> serviceManager = XposedHelpers.findClass("android.os.ServiceManager", appClassLoader);
-        final String serviceName = Build.VERSION.SDK_INT >= 21 ? "user.wechart.trans" : "wechart.trans";
-        XposedHelpers.findAndHookMethod(serviceManager, "getService", String.class, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                super.beforeHookedMethod(param);
-                if (serviceName.equals(param.args[0])) {
-                    Log.i("mylog", "get service :" + translateService[0]);
-                    param.setResult(translateService[0]);
-                }
-            }
-        });
-    }
-
-    @SuppressLint("ApplySharedPref")
-    private static void initForQQ(Context context, ApplicationInfo applicationInfo, ClassLoader appClassLoader) {
-        if (applicationInfo == null) {
-            return;
-        }
-        final String QQ = decodeFromBase64("Y29tLnRlbmNlbnQubW9iaWxlcXE=");
-        if (!QQ.equals(applicationInfo.packageName)) {
-            return;
-        }
-        if (QQ.equals(applicationInfo.processName)) {
-            SharedPreferences sp = context.getSharedPreferences(decodeFromBase64("aG90cGF0Y2hfcHJlZmVyZW5jZQ=="), // hotpatch_preference
-                    Context.MODE_PRIVATE);
-            sp.edit().remove(decodeFromBase64("a2V5X2NvbmZpZ19wYXRjaF9kZXg=")).commit(); // key_config_patch_dex
-        }
-    }
-
-    private static void initForWechat(Context context, ApplicationInfo applicationInfo, ClassLoader appClassLoader) {
-        if (applicationInfo == null) {
-            return;
-        }
-
-        if (!WECHAT.equals(applicationInfo.packageName)) {
-            return;
-        }
-        if (WECHAT.equals(applicationInfo.processName)) {
-            // for main process
-            String dataDir = applicationInfo.dataDir;
-
-            File tinker = new File(dataDir, decodeFromBase64("dGlua2Vy"));
-            File tinker_temp = new File(dataDir, decodeFromBase64("dGlua2VyX3RlbXA="));
-            File tinker_server = new File(dataDir, decodeFromBase64("dGlua2VyX3NlcnZlcg=="));
-
-            deleteDir(tinker);
-            deleteDir(tinker_temp);
-            deleteDir(tinker_server);
-
-            final int mainProcessId = Process.myPid();
-            XposedHelpers.findAndHookMethod(Process.class, "killProcess", int.class, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    super.beforeHookedMethod(param);
-                    int pid = (int) param.args[0];
-                    if (pid != mainProcessId) {
-                        return;
-                    }
-                    // try kill main process, find stack
-                    StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-                    if (stackTrace == null) {
-                        return;
-                    }
-
-                    for (StackTraceElement stackTraceElement : stackTrace) {
-                        if (stackTraceElement.getClassName().contains("com.tencent.mm.app")) {
-                            XposedBridge.log("do not suicide..." + Arrays.toString(stackTrace));
-                            param.setResult(null);
-                            break;
-                        }
-                    }
-                }
-            });
-        }
+        return applicationInfo == null;
     }
 
     public static boolean deleteDir(File dir) {
@@ -622,100 +279,6 @@ public class ExposedBridge {
      */
     private static String decodeFromBase64(String base64) {
         return new String(Base64.decode(base64, 0));
-    }
-
-    /**
-     * write xposed property file to fake xposedinstaller
-     *
-     * @param propertyFile the property file used by XposedInstaller
-     * @param version      to fake version
-     * @param retry        need retry, when retry, delete file and try again
-     */
-    private static void writeXposedProperty(File propertyFile, String version, boolean retry) {
-        Properties properties = new Properties();
-        properties.put(VERSION_KEY, version);
-        properties.put("arch", Build.SUPPORTED_64_BIT_ABIS[0]);
-        properties.put("minsdk", "52");
-        properties.put("maxsdk", String.valueOf(Integer.MAX_VALUE));
-
-        FileOutputStream fos = null;
-        try {
-            fos = new FileOutputStream(propertyFile);
-            properties.store(fos, null);
-        } catch (IOException e) {
-            //noinspection ResultOfMethodCallIgnored
-            propertyFile.delete();
-            writeXposedProperty(propertyFile, version, false);
-        } finally {
-            closeSliently(fos);
-        }
-    }
-
-    private static String getXposedVersionFromProperty(File propertyFile) {
-        FileInputStream fis = null;
-        try {
-            fis = new FileInputStream(propertyFile);
-            Properties properties = new Properties();
-            properties.load(new FileInputStream(propertyFile));
-            return properties.getProperty(VERSION_KEY);
-        } catch (IOException e) {
-            log("getXposedVersion from property failed");
-            return null;
-        } finally {
-            closeSliently(fis);
-        }
-    }
-
-    /**
-     * try read module config fules.
-     *
-     * @return is need check module
-     */
-    private static boolean loadModuleConfig(String rootDir, String processName) {
-        if (lastModuleList != null && TextUtils.equals(lastModuleList.first, processName) && lastModuleList.second != null) {
-            // Timber.d("Last module valid, do not load config repeat");
-            return true; // xposed installer has config file, and has already loaded for this process, return.
-        }
-
-        final File xposedInstallerDir = new File(rootDir, XPOSED_INSTALL_PACKAGE);
-
-        if (!xposedInstallerDir.exists()) {
-            Timber.i("XposedInstaller not installed. Module loading skipped.");
-            return false; // xposed installer not enabled, must load all.
-        }
-
-        final File modules = new File(xposedInstallerDir, "exposed_conf/modules.list");
-        if (!modules.exists()) {
-            Timber.i("Xposed installer's modules do not exist. Module loading skipped.");
-            try {
-                modules.getParentFile().mkdirs();
-                modules.createNewFile();
-            } catch (Throwable t) {
-                Timber.e(t);
-            }
-            return false; // xposed installer config file not exist, load all.
-        }
-        try (BufferedReader br = new BufferedReader(new FileReader(modules))) {
-            String line;
-            Set<String> moduleSet = new HashSet<>();
-            while ((line = br.readLine()) != null) {
-                line = line.trim();
-                if (line.startsWith("#")) {
-                    continue;
-                }
-                if (line.isEmpty()) {
-                    continue;
-                }
-                moduleSet.add(line);
-            }
-
-            lastModuleList = Pair.create(processName, moduleSet);
-            Timber.d("Module list: %s", moduleSet);
-            return true;
-        } catch (IOException e) {
-            Timber.e(e);
-            return false;
-        }
     }
 
     private static void closeSliently(Closeable closeable) {

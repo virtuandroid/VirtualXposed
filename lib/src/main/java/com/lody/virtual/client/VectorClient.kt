@@ -15,7 +15,7 @@ object VectorClient {
         applicationInfo.packageName == VECTOR_PACKAGE
 
     @JvmStatic
-    fun initOnce(appContext: Context, applicationInfo: ApplicationInfo, appClassLoader: ClassLoader) {
+    fun initVectorManager(appContext: Context, applicationInfo: ApplicationInfo, appClassLoader: ClassLoader) {
         if (!isVector(applicationInfo)) {
             return
         }

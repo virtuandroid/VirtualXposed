@@ -30,6 +30,8 @@ import android.system.ErrnoException;
 import android.system.Os;
 import android.util.ArrayMap;
 
+import androidx.annotation.NonNull;
+
 import com.lody.virtual.BuildConfig;
 import com.lody.virtual.client.core.CrashHandler;
 import com.lody.virtual.client.core.InvocationStubManager;
@@ -43,7 +45,6 @@ import com.lody.virtual.client.hook.proxies.am.HCallbackStub;
 import com.lody.virtual.client.hook.secondary.ProxyServiceFactory;
 import com.lody.virtual.client.ipc.VActivityManager;
 import com.lody.virtual.client.ipc.VDeviceManager;
-import com.virtualxposed.log.client.VLoggingClient;
 import com.lody.virtual.client.ipc.VPackageManager;
 import com.lody.virtual.client.ipc.VirtualStorageManager;
 import com.lody.virtual.client.stub.VASettings;
@@ -57,7 +58,12 @@ import com.lody.virtual.remote.InstalledAppInfo;
 import com.lody.virtual.remote.PendingResultData;
 import com.lody.virtual.remote.VDeviceInfo;
 import com.lody.virtual.server.interfaces.IUiCallback;
+import com.lody.virtual.server.vector.VectorManagerService;
+import com.lody.virtual.server.vector.VectorManagerServiceImpl;
 import com.virtualxposed.log.client.LogMessage;
+import com.virtualxposed.log.client.VLoggingClient;
+
+import org.matrix.vector.ipc.ScopeEntry;
 
 import java.io.File;
 import java.lang.reflect.Field;
@@ -66,6 +72,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import dalvik.system.DelegateLastClassLoader;
@@ -346,14 +353,20 @@ public final class VClientImpl extends IVClient.Stub {
 
         boolean enableXposed = VirtualCore.get().isXposedEnabled();
         if (enableXposed) {
-            Timber.i("Xposed is enabled.");
+            Timber.i("Xposed is enabled");
             ClassLoader originClassLoader = context.getClassLoader();
             ExposedBridge.initOnce(context, data.appInfo, originClassLoader);
-            VectorClient.initOnce(context, data.appInfo, originClassLoader);
-            List<InstalledAppInfo> modules = VirtualCore.get().getInstalledApps(0);
-            for (InstalledAppInfo module : modules) {
-                ExposedBridge.loadModule(module.apkPath, module.getOdexFile().getParent(), module.libPath,
-                        data.appInfo, originClassLoader);
+
+            Set<String> enabledModules = getEnabledModules(packageName);
+
+            VectorClient.initVectorManager(context, data.appInfo, originClassLoader);
+            List<InstalledAppInfo> installedApps = VirtualCore.get().getInstalledApps(0);
+
+            for (InstalledAppInfo app : installedApps) {
+                if (enabledModules.contains(app.packageName)) {
+                    ExposedBridge.loadModule(app.apkPath, app.getOdexFile().getParent(), app.libPath,
+                            data.appInfo, originClassLoader);
+                }
             }
         } else {
             Timber.w("Xposed is not enabled");
@@ -417,6 +430,27 @@ public final class VClientImpl extends IVClient.Stub {
         }
         VActivityManager.get().appDoneExecuting();
         VirtualCore.get().getComponentDelegate().afterApplicationCreate(mInitialApplication);
+    }
+
+    @NonNull
+    private static Set<String> getEnabledModules(String packageName) {
+        VectorManagerServiceImpl vectorManagerService = VectorManagerService.getOrCreateBinder();
+
+        List<String> enabledModules = vectorManagerService.getEnabledModules();
+        Set<String> modulesToLoad = new HashSet<>();
+
+        // Only allow ENABLED modules also matching the app scope
+        for (String module : enabledModules) {
+            List<ScopeEntry> enabledModuleScopes = vectorManagerService.getModuleScope(module);
+            for (ScopeEntry enabledModuleScope : enabledModuleScopes) {
+                // TODO handle user ID
+                if (Objects.equals(enabledModuleScope.packageName, packageName)) {
+                    modulesToLoad.add(module);
+                }
+            }
+        }
+
+        return modulesToLoad;
     }
 
     private void fixWeChatRecovery(Application app) {

@@ -10,40 +10,74 @@ import com.lody.virtual.os.VUserManager
 import com.lody.virtual.server.am.BroadcastSystem
 import com.lody.virtual.server.am.VActivityManagerService
 import com.lody.virtual.server.pm.VAppManagerService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
+import kotlinx.serialization.InternalSerializationApi
 import org.matrix.vector.ipc.DeviceUser
 import org.matrix.vector.ipc.IFrameworkInstallReceiver
 import org.matrix.vector.ipc.IManagerService
 import org.matrix.vector.ipc.ModuleLoadFailure
 import org.matrix.vector.ipc.ScopeEntry
 import rikka.parcelablelist.ParcelableListSlice
+import timber.log.Timber
+import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
-class VectorManagerServiceImpl : IManagerService.Stub() {
+class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    @OptIn(InternalSerializationApi::class)
+    fun start() {
+        val store = PersistentModuleStore.getStore(backingFile) ?: return
+        _enabledModules.value = store.enabledModules.toSet()
+        _moduleScopes.value = store.moduleScopes.mapValues { it.value.toSet() }
+        setupPersistencePipeline()
+    }
+
+    @OptIn(InternalSerializationApi::class, FlowPreview::class)
+    private fun setupPersistencePipeline() {
+        combine(_enabledModules, _moduleScopes) { enabled, scopes ->
+            ModuleStore(enabled, scopes)
+        }
+            .drop(1) // Drop initial state
+            .debounce(500.milliseconds)
+            .onEach { store -> persistData(store) }
+            .launchIn(scope)
+    }
+
+    @OptIn(InternalSerializationApi::class)
+    private fun persistData(store: ModuleStore) {
+        runCatching {
+            PersistentModuleStore.writeStore(backingFile, store)
+        }.onFailure { e ->
+            Timber.e(e, "Failed to persist module data!")
+        }
+    }
+
+    private val _enabledModules = MutableStateFlow<Set<String>>(emptySet())
+    private val _moduleScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private var isVerboseLog = false
-    private val enabledModulesMap = mutableMapOf(
-        "com.example.fake.module.one" to true,
-        "com.example.fake.module.two" to false
-    )
-    private val moduleScopesMap = mutableMapOf<String, List<ScopeEntry?>>(
-        "com.example.fake.module.one" to listOf(
-
-        )
-    )
-    private val includeNewAppsMap = mutableMapOf(
-        "com.example.fake.module.one" to true
-    )
 
     override fun getProtocolVersion() = PROTOCOL_VERSION
 
     override fun getFrameworkVersionCode() = 1L
 
     override fun getFrameworkVersionName(): String {
-        return "1.0.0-mock"
+        return "1.0.0-VirtualXposed"
     }
 
     override fun getBuildStamp(): String {
         // TODO Implement real build stamps
-        return "2026-09-28-mock-build-001"
+        return "N/A"
     }
 
     override fun getLibxposedApiVersion(): Int {
@@ -67,7 +101,7 @@ class VectorManagerServiceImpl : IManagerService.Stub() {
     }
 
     override fun getEnabledModules(): List<String?> {
-        return enabledModulesMap.filterValues { it }.keys.toList()
+        return _enabledModules.value.toList()
     }
 
     override fun setModuleEnabled(
@@ -75,40 +109,45 @@ class VectorManagerServiceImpl : IManagerService.Stub() {
         enabled: Boolean
     ): Boolean {
         if (packageName == null) return false
-        enabledModulesMap[packageName] = enabled
+        _enabledModules.update {
+            it + packageName
+        }
         return true
     }
 
     override fun getModuleScope(packageName: String?): List<ScopeEntry?> {
-        return moduleScopesMap[packageName] ?: emptyList()
+        if (packageName == null) return emptyList()
+        val scope = ((_moduleScopes.value[packageName]) ?: emptySet()) + packageName
+        return scope.map { ScopeEntry().apply { this.packageName = it } }
     }
 
     override fun setModuleScope(
         packageName: String?,
         scope: List<ScopeEntry?>?
     ): Boolean {
+        val fixedScope = scope?.filterNotNull() ?: return false
         if (packageName == null) return false
-        moduleScopesMap[packageName] = scope ?: emptyList()
+        // TODO Fix missing userId
+        val newScope = mapOf(packageName to fixedScope.map { it.packageName }.toSet())
+        _moduleScopes.update { scopes ->
+            scopes + newScope
+        }
         return true
     }
 
     override fun getIncludeNewApps(packageName: String?): Boolean {
-        return includeNewAppsMap[packageName] ?: false
+        return false
     }
 
     override fun setIncludeNewApps(
         packageName: String?,
         enable: Boolean
     ): Boolean {
-        if (packageName == null) return false
-        includeNewAppsMap[packageName] = enable
-        return true
+        return false
     }
 
     override fun getModuleLoadFailures(): List<ModuleLoadFailure?> {
-        return listOf(
-            //("com.example.broken.module", "ClassNotFoundException: Failed to resolve entry point", System.currentTimeMillis())
-        )
+        return listOf()
     }
 
     override fun isStatusNotificationEnabled(): Boolean {
@@ -127,26 +166,18 @@ class VectorManagerServiceImpl : IManagerService.Stub() {
     }
 
     override fun getLiveLogPart(verbose: Boolean): ParcelFileDescriptor? {
-        val pipe = ParcelFileDescriptor.createPipe()
-        ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use { stream ->
-            stream.write("[MOCK LOG] Live streaming initialized\n".toByteArray())
-        }
-        return pipe[0]
+        return null
     }
 
     override fun getLogParts(verbose: Boolean): List<String?>? {
-        return listOf("system.log", "xposed.log", "crash.log")
+        return null
     }
 
     override fun getLogPart(
         verbose: Boolean,
         name: String?
     ): ParcelFileDescriptor? {
-        val pipe = ParcelFileDescriptor.createPipe()
-        ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use { stream ->
-            stream.write("[MOCK LOG] Contents for log part: $name\n".toByteArray())
-        }
-        return pipe[0]
+        return null
     }
 
     override fun startNewLogPart(verbose: Boolean) {
@@ -154,11 +185,7 @@ class VectorManagerServiceImpl : IManagerService.Stub() {
     }
 
     override fun writeBugReport(zipFd: ParcelFileDescriptor?) {
-        zipFd?.let {
-            ParcelFileDescriptor.AutoCloseOutputStream(it).use { stream ->
-                stream.write("Fake Bug Report content ZIP payload".toByteArray())
-            }
-        }
+        return
     }
 
     override fun getInstalledPackagesFromAllUsers(
@@ -235,14 +262,9 @@ class VectorManagerServiceImpl : IManagerService.Stub() {
         zipPath: String?,
         receiver: IFrameworkInstallReceiver?
     ) {
-
     }
 
     override fun getManagerApk(): ParcelFileDescriptor? {
-        val pipe = ParcelFileDescriptor.createPipe()
-        ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use { stream ->
-            stream.write("Fake APK binary data".toByteArray())
-        }
-        return pipe[0]
+        return null
     }
 }
