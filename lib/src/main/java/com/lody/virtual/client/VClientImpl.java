@@ -389,6 +389,13 @@ public final class VClientImpl extends IVClient.Stub {
         mirror.android.app.ActivityThread.mInitialApplication.set(mainThread, mInitialApplication);
         ContextFixer.fixContext(mInitialApplication);
 
+        try {
+            // Do late injections after ActivityThread init
+            InvocationStubManager.getInstance().injectAllLate();
+        } catch (Throwable e) {
+            Timber.e(e);
+        }
+
         if (Build.VERSION.SDK_INT >= 24 && "com.tencent.mm:recovery".equals(processName)) {
             fixWeChatRecovery(mInitialApplication);
         }

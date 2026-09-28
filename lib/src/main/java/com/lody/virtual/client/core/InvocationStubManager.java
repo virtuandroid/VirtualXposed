@@ -79,10 +79,11 @@ import java.util.Map;
  */
 public final class InvocationStubManager {
 
-    private static InvocationStubManager sInstance = new InvocationStubManager();
+    private static final InvocationStubManager sInstance = new InvocationStubManager();
     private static boolean sInit;
 
-	private Map<Class<?>, IInjector> mInjectors = new HashMap<>(13);
+	private final Map<Class<?>, IInjector> mInjectors = new HashMap<>(13);
+	private final Map<Class<?>, IInjector> mLateInjectors = new HashMap<>(1);
 
 	private InvocationStubManager() {
 	}
@@ -93,6 +94,14 @@ public final class InvocationStubManager {
 
 	void injectAll() throws Throwable {
 		for (IInjector injector : mInjectors.values()) {
+			injector.inject();
+		}
+		// XXX: Lazy inject the Instrumentation,
+		addInjector(AppInstrumentation.getDefault());
+	}
+
+    public void injectAllLate() throws Throwable {
+		for (IInjector injector : mLateInjectors.values()) {
 			injector.inject();
 		}
 		// XXX: Lazy inject the Instrumentation,
@@ -113,7 +122,6 @@ public final class InvocationStubManager {
 		}
 		injectInternal();
 		sInit = true;
-
 	}
 
 	private void injectInternal() throws Throwable {
@@ -191,7 +199,8 @@ public final class InvocationStubManager {
                 addInjector(new BatteryStatsStub());
             }
             if (BuildCompat.isOreo()) {
-				addInjector(new AutoFillManagerStub());
+            	// This relies on ApplicationThread.getApplication(), which is only initialized later.
+				addInjectorLate(new AutoFillManagerStub());
 			}
             if (BuildCompat.isQ()) {
             	addInjector(new ActivityTaskManagerStub());
@@ -212,9 +221,18 @@ public final class InvocationStubManager {
 		mInjectors.put(IInjector.getClass(), IInjector);
 	}
 
+    private void addInjectorLate(IInjector IInjector) {
+		mLateInjectors.put(IInjector.getClass(), IInjector);
+	}
+
 	public <T extends IInjector> T findInjector(Class<T> clazz) {
-		// noinspection unchecked
-		return (T) mInjectors.get(clazz);
+        if (mInjectors.containsKey(clazz)) {
+		    // noinspection unchecked
+		    return (T) mInjectors.get(clazz);
+        } else {
+		    // noinspection unchecked
+		    return (T) mLateInjectors.get(clazz);
+        }
 	}
 
 	public <T extends IInjector> void checkEnv(Class<T> clazz) {
