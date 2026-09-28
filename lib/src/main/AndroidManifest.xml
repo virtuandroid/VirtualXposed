@@ -252,6 +252,10 @@
             android:foregroundServiceType="specialUse"
             android:process="@string/engine_process_name" />
 
+        <service
+            android:name=".server.vector.VectorManagerService"
+            android:process="@string/engine_process_name" />
+
         <activity
             android:name=".client.stub.ShortcutHandleActivity"
             android:excludeFromRecents="true"

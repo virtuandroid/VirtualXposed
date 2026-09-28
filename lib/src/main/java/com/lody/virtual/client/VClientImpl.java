@@ -349,6 +349,7 @@ public final class VClientImpl extends IVClient.Stub {
             Timber.i("Xposed is enabled.");
             ClassLoader originClassLoader = context.getClassLoader();
             ExposedBridge.initOnce(context, data.appInfo, originClassLoader);
+            VectorClient.initOnce(context, data.appInfo, originClassLoader);
             List<InstalledAppInfo> modules = VirtualCore.get().getInstalledApps(0);
             for (InstalledAppInfo module : modules) {
                 ExposedBridge.loadModule(module.apkPath, module.getOdexFile().getParent(), module.libPath,

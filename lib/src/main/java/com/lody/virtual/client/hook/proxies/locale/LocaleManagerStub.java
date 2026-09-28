@@ -33,8 +33,6 @@ public class LocaleManagerStub extends BinderInvocationProxy {
 
         @Override
         public Object call(Object provider, Method method, Object[] args) throws Throwable {
-            // Replace virtual package name or redirect query
-            System.out.println("GET APPLICATION LOCALES " +method.getName() + " args " + Arrays.toString(args));
             MethodParameterUtils.replaceFirstAppPkg(args);
             return method.invoke(provider, args);
         }
