@@ -877,7 +877,10 @@ class MethodProxies {
         public Object call(Object who, Method method, Object... args) throws Throwable {
             IBinder token = (IBinder) args[0];
             Intent service = (Intent) args[1];
-            boolean doRebind = (boolean) args[2];
+            boolean doRebind = false;
+            if (args.length > 2) {
+                 doRebind = (boolean) args[2];
+            }
             VActivityManager.get().unbindFinished(token, service, doRebind);
             return 0;
         }

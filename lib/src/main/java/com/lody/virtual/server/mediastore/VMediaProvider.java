@@ -16,6 +16,8 @@ import java.util.Objects;
 import java.util.Vector;
 import java.util.function.Function;
 
+import timber.log.Timber;
+
 /**
  * Virtual implementation of MediaStore ownership enforcing for VirtualApp. This
  * class manages and links virtual owners with files on the MediaStore. Allows for owner-safe
@@ -279,6 +281,10 @@ public final class VMediaProvider {
         Intent serviceIntent = new Intent(context, MediaProviderService.class);
         serviceIntent.putExtra(MediaProviderService.MODE, MediaProviderService.MODE_DETECT);
         serviceIntent.putExtra(MediaProviderService.URI, uri);
-        context.startService(serviceIntent);
+        try {
+            context.startService(serviceIntent);
+        } catch (Exception exception) {
+            Timber.e(exception);
+        }
     }
 }
