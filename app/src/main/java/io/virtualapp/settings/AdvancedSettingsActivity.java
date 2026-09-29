@@ -66,12 +66,6 @@ public class AdvancedSettingsActivity extends VActivity {
                 return true;
             });
 
-            findPreference(FILE_MANAGE).setOnPreferenceClickListener(preference -> {
-                OnlinePlugin.openOrDownload(getActivity(), OnlinePlugin.FILE_MANAGE_PACKAGE,
-                        OnlinePlugin.FILE_MANAGE_URL, getString(R.string.install_file_manager_tips));
-                return false;
-            });
-
             final SwitchPreference disableXposed = (SwitchPreference)
                 findPreference(DISABLE_XPOSED);
             disableXposed.setOnPreferenceChangeListener((preference, newValue) -> {

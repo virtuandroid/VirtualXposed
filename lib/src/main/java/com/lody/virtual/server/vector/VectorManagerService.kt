@@ -1,14 +1,18 @@
 package com.lody.virtual.server.vector
 
 import android.app.Service
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.os.VBinder
+import kotlinx.coroutines.suspendCancellableCoroutine
+import org.matrix.vector.ipc.IManagerService
 import timber.log.Timber
 import java.io.File
+import kotlin.coroutines.resume
 
 class VectorManagerService : Service() {
     companion object {
@@ -21,18 +25,59 @@ class VectorManagerService : Service() {
             return File(VirtualCore.get().context.applicationContext.filesDir, "modules.json")
         }
 
-        @JvmStatic
-        @Synchronized
-        fun getOrCreateBinder(): VectorManagerServiceImpl {
-            val binder = _binder ?: VectorManagerServiceImpl(getBackingFile()).also {
-                it.start()
-                _binder = it
-            }
-            return binder
+        suspend fun getService(): IManagerService {
+            val context = VirtualCore.get().context
+            val intent = Intent(context, VectorManagerService::class.java)
+            val binder = getServiceBinder(context, intent)
+            return IManagerService.Stub.asInterface(binder)
         }
 
-        private var _binder: VectorManagerServiceImpl? = null
+        @JvmStatic
+        @Synchronized
+        fun getCurrentStore(): ModuleStore? {
+            return PersistentModuleStore.getStore(getBackingFile())
+        }
+
+        private suspend fun getServiceBinder(
+            context: Context,
+            intent: Intent,
+            flags: Int = BIND_AUTO_CREATE
+        ): IBinder =
+            suspendCancellableCoroutine { continuation ->
+                val connection = object : ServiceConnection {
+                    override fun onServiceConnected(name: ComponentName?, service: IBinder) {
+                        if (continuation.isActive) {
+                            continuation.resume(service)
+                        }
+                    }
+
+                    override fun onServiceDisconnected(name: ComponentName?) {
+                    }
+
+                    override fun onBindingDied(name: ComponentName?) {
+                        if (continuation.isActive) {
+                            continuation.resumeWith(Result.failure(IllegalStateException("Binding died for $name")))
+                        }
+                    }
+                }
+
+                val bound = context.bindService(intent, connection, flags)
+
+                if (!bound) {
+                    if (continuation.isActive) {
+                        continuation.resumeWith(Result.failure(IllegalArgumentException("Failed to bind service for $intent")))
+                    }
+                }
+
+                continuation.invokeOnCancellation {
+                    runCatching {
+                        context.unbindService(connection)
+                    }
+                }
+            }
     }
+
+    private var _binder: VectorManagerServiceImpl? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!isPrivileged()) {
@@ -55,7 +100,10 @@ class VectorManagerService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? {
         return if (isPrivileged()) {
-            val binder = getOrCreateBinder()
+            val binder = _binder ?: VectorManagerServiceImpl(getBackingFile()).also {
+                it.start()
+                _binder = it
+            }
             Timber.i("Bound Vector Manager Service")
             binder
         } else {

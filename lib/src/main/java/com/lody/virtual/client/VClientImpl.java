@@ -58,6 +58,7 @@ import com.lody.virtual.remote.InstalledAppInfo;
 import com.lody.virtual.remote.PendingResultData;
 import com.lody.virtual.remote.VDeviceInfo;
 import com.lody.virtual.server.interfaces.IUiCallback;
+import com.lody.virtual.server.vector.ModuleStore;
 import com.lody.virtual.server.vector.VectorManagerService;
 import com.lody.virtual.server.vector.VectorManagerServiceImpl;
 import com.virtualxposed.log.client.LogMessage;
@@ -441,18 +442,23 @@ public final class VClientImpl extends IVClient.Stub {
 
     @NonNull
     private static Set<String> getEnabledModules(String packageName) {
-        VectorManagerServiceImpl vectorManagerService = VectorManagerService.getOrCreateBinder();
+        ModuleStore store = VectorManagerService.getCurrentStore();
+        if (store == null) {
+            return Set.of();
+        }
 
-        List<String> enabledModules = vectorManagerService.getEnabledModules();
+        Set<String> enabledModules = store.getEnabledModules();
         Set<String> modulesToLoad = new HashSet<>();
 
         // Only allow ENABLED modules also matching the app scope
         for (String module : enabledModules) {
-            List<ScopeEntry> enabledModuleScopes = vectorManagerService.getModuleScope(module);
-            for (ScopeEntry enabledModuleScope : enabledModuleScopes) {
-                // TODO handle user ID
-                if (Objects.equals(enabledModuleScope.packageName, packageName)) {
-                    modulesToLoad.add(module);
+            Set<String> enabledModuleScopes = store.getModuleAppScopes().get(module);
+            if (enabledModuleScopes != null) {
+                for (String enabledModuleScope : enabledModuleScopes) {
+                    // TODO handle user ID
+                    if (Objects.equals(enabledModuleScope, packageName)) {
+                        modulesToLoad.add(module);
+                    }
                 }
             }
         }

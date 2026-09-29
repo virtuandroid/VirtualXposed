@@ -6,11 +6,6 @@
         android:persistent="false"
         android:title="@string/advance_settings_install_gms"/>
 
-    <Preference
-        android:key="settings_file_manage"
-        android:persistent="false"
-        android:title="@string/settings_file_manage_text" />
-
     <SwitchPreference
         android:defaultValue="false"
         android:key="advance_settings_disable_xposed"

@@ -14,11 +14,6 @@
         android:title="@string/settings_module_manage" />
 
     <Preference
-        android:key="settings_plugin_recommend"
-        android:persistent="false"
-        android:title="@string/settings_plugin_recommend" />
-
-    <Preference
         android:key="settings_advanced"
         android:persistent="false"
         android:title="@string/advanced_settings_title" />
@@ -37,16 +32,6 @@
         android:key="settings_task_manage"
         android:persistent="false"
         android:title="@string/settings_task_manage_text" />
-
-    <Preference
-        android:key="settings_donate"
-        android:persistent="false"
-        android:title="@string/about_donate_title" />
-
-    <Preference
-        android:key="settings_faq"
-        android:persistent="false"
-        android:title="@string/about_faq_title" />
 
     <Preference
         android:key="settings_about"

@@ -59,6 +59,12 @@ android {
         aidl = true
         buildConfig = true
     }
+
+    kotlin {
+        compilerOptions {
+            freeCompilerArgs.add("-opt-in=kotlinx.serialization.InternalSerializationApi")
+        }
+    }
 }
 
 dependencies {

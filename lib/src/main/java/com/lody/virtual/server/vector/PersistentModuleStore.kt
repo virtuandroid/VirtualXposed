@@ -1,36 +1,41 @@
 package com.lody.virtual.server.vector
 
-import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.io.File
 import kotlin.jvm.Throws
 
-@InternalSerializationApi
 @Serializable
 data class ModuleStore(
     val enabledModules: Set<String> = emptySet(),
-    val moduleScopes: Map<String, Set<String>> = emptyMap()
+    val moduleAppScopes: Map<String, Set<String>> = emptyMap(),
+    val allowListHookScopes: Map<String, Set<String>> = emptyMap(),
+    val blockListHookScopes: Map<String, Set<String>> = emptyMap(),
 )
 
 object PersistentModuleStore {
-    private val json = Json
-    @OptIn(InternalSerializationApi::class)
-    @Throws
-    fun writeStore(backingFile: File, store: ModuleStore) {
-        val storeJson = json.encodeToString(store)
-        backingFile.writeText(storeJson)
+    private val json = Json {
+        ignoreUnknownKeys = true
     }
 
-    @OptIn(InternalSerializationApi::class)
+    fun writeStore(backingFile: File, store: ModuleStore) {
+        runCatching {
+            println("SAVBING STORE $store")
+            Timber.i("Saving store: $store")
+            val storeJson = json.encodeToString(store)
+            backingFile.writeText(storeJson)
+        }.onFailure { e ->
+            Timber.e(e, "Failed to write store")
+        }
+    }
+
     @Throws
     private fun parseStore(backingFile: File): ModuleStore {
         val text = backingFile.readText()
         return json.decodeFromString<ModuleStore>(text)
     }
 
-    @OptIn(InternalSerializationApi::class)
     fun getStore(backingFile: File): ModuleStore? {
         return runCatching {
             if (!backingFile.exists()) {
@@ -43,7 +48,7 @@ object PersistentModuleStore {
 
             return parseStore(backingFile)
         }.onFailure { e ->
-            Timber.e(e)
+            Timber.e(e, "Failed to read store!")
         }.getOrElse {
             null
         }

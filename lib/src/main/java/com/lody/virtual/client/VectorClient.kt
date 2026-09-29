@@ -1,12 +1,12 @@
 package com.lody.virtual.client
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.ServiceConnection
 import android.content.pm.ApplicationInfo
 import android.os.IBinder
-import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.server.vector.VectorManagerService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 object VectorClient {
@@ -16,26 +16,10 @@ object VectorClient {
 
     @JvmStatic
     fun initVectorManager(appContext: Context, applicationInfo: ApplicationInfo, appClassLoader: ClassLoader) {
-        if (!isVector(applicationInfo)) {
-            return
+        CoroutineScope(Dispatchers.IO).launch {
+            val binder = VectorManagerService.getService().asBinder()
+            sendBinderToManager(appClassLoader, binder)
         }
-
-        val connection = object : ServiceConnection {
-            override fun onServiceConnected(
-                name: ComponentName?,
-                service: IBinder?
-            ) {
-                if (service != null) {
-                    Timber.i("Vector manager service connected")
-                    sendBinderToManager(appClassLoader, service)
-                }
-            }
-
-            override fun onServiceDisconnected(name: ComponentName?) {
-            }
-        }
-
-        VectorManagerService.start(VirtualCore.get().context, connection)
     }
 
     fun sendBinderToManager(classLoader: ClassLoader, binder: IBinder): Boolean {

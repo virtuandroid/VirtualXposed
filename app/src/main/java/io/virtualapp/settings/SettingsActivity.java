@@ -4,7 +4,6 @@ import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.ComponentName;
 import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
 import android.preference.Preference;
 import android.preference.PreferenceFragment;
@@ -18,23 +17,20 @@ import io.virtualapp.R;
 import io.virtualapp.VCommends;
 import io.virtualapp.abs.ui.VActivity;
 import io.virtualapp.compose.ui.AboutActivity;
+import io.virtualapp.compose.ui.ModuleActivity;
 import io.virtualapp.home.ListAppActivity;
-import io.virtualapp.utils.Misc;
 
 /**
- * Settings activity for Launcher. Currently implements the following setting: Allow rotation
+ * Settings activity for Launcher. Currently, implements the following setting: Allow rotation
  */
 public class SettingsActivity extends VActivity {
 
     private static final String ADD_APP_PREFERENCE = "settings_add_app";
     private static final String MODULE_MANAGE_PREFERENCE = "settings_module_manage";
-    private static final String RECOMMEND_PLUGIN = "settings_plugin_recommend";
     private static final String ADVANCED_SETTINGS_PREFERENCE = "settings_advanced";
     private static final String PERMISSION_MANAGE_PREFERENCE = "settings_permission_manage";
     private static final String APP_MANAGE_PREFERENCE = "settings_app_manage";
     private static final String TASK_MANAGE_PREFERENCE = "settings_task_manage";
-    private static final String FAQ_SETTINGS_PREFERENCE = "settings_faq";
-    private static final String DONATE_PREFERENCE = "settings_donate";
     private static final String ABOUT_PREFERENCE = "settings_about";
     private static final String REBOOT_PREFERENCE = "settings_reboot";
 
@@ -69,25 +65,7 @@ public class SettingsActivity extends VActivity {
 
             final Preference moduleManage = findPreference(MODULE_MANAGE_PREFERENCE);
             moduleManage.setOnPreferenceClickListener(preference -> {
-                try {
-                    Intent t = new Intent();
-                    t.setComponent(new ComponentName("de.robv.android.xposed.installer",
-                                "de.robv.android.xposed.installer.WelcomeActivity"));
-                    t.putExtra("fragment", 1);
-                    int ret = VActivityManager.get().startActivity(t, 0);
-                    if (ret < 0) {
-                        Toast.makeText(getActivity(), R.string.xposed_installer_not_found,
-                                Toast.LENGTH_SHORT).show();
-                    }
-                } catch (Throwable ignored) {
-                    ignored.printStackTrace();
-                }
-                return false;
-            });
-
-            final Preference recommend = findPreference(RECOMMEND_PLUGIN);
-            recommend.setOnPreferenceClickListener(preference -> {
-                startActivity(new Intent(getActivity(), RecommendPluginActivity.class));
+                startActivity(new Intent(getActivity(), ModuleActivity.class));
                 return false;
             });
 
@@ -110,18 +88,6 @@ public class SettingsActivity extends VActivity {
 
             findPreference(TASK_MANAGE_PREFERENCE).setOnPreferenceClickListener(preference -> {
                 startActivity(new Intent(getActivity(), TaskManageActivity.class));
-                return false;
-            });
-
-            findPreference(DONATE_PREFERENCE).setOnPreferenceClickListener(preference -> {
-                Misc.showDonate(getActivity());
-                return false;
-            });
-
-            findPreference(FAQ_SETTINGS_PREFERENCE).setOnPreferenceClickListener(preference -> {
-                Uri uri = Uri.parse("https://github.com/android-hacker/VAExposed/wiki/FAQ");
-                Intent t = new Intent(Intent.ACTION_VIEW, uri);
-                startActivity(t);
                 return false;
             });
 
@@ -151,7 +117,6 @@ public class SettingsActivity extends VActivity {
             boolean xposedEnabled = VirtualCore.get().isXposedEnabled();
             if (!xposedEnabled) {
                 getPreferenceScreen().removePreference(moduleManage);
-                getPreferenceScreen().removePreference(recommend);
             }
         }
 

@@ -124,4 +124,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("com.jakewharton.timber:timber:5.0.1")
+    implementation("dev.rikka.rikkax.parcelablelist:parcelablelist:2.0.1")
+    implementation("com.google.accompanist:accompanist-drawablepainter:0.37.3")
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose")
 }

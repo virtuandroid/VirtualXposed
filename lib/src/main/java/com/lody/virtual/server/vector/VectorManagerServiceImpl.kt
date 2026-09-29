@@ -35,18 +35,25 @@ import kotlin.time.Duration.Companion.milliseconds
 class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    @OptIn(InternalSerializationApi::class)
     fun start() {
+        Timber.i("Start service!")
         val store = PersistentModuleStore.getStore(backingFile) ?: return
         _enabledModules.value = store.enabledModules.toSet()
-        _moduleScopes.value = store.moduleScopes.mapValues { it.value.toSet() }
-        setupPersistencePipeline()
+        _moduleAppScopes.value = store.moduleAppScopes.mapValues { it.value.toSet() }
+        _allowListHookScopes.value = store.allowListHookScopes.mapValues { it.value.toSet() }
+        _blockListHookScopes.value = store.blockListHookScopes.mapValues { it.value.toSet() }
+        setupStoreJob()
     }
 
-    @OptIn(InternalSerializationApi::class, FlowPreview::class)
-    private fun setupPersistencePipeline() {
-        combine(_enabledModules, _moduleScopes) { enabled, scopes ->
-            ModuleStore(enabled, scopes)
+    @OptIn(FlowPreview::class)
+    private fun setupStoreJob() {
+        combine(
+            _enabledModules,
+            _moduleAppScopes,
+            _allowListHookScopes,
+            _blockListHookScopes
+        ) { enabled, scopes, allowed, blocked ->
+            ModuleStore(enabled, scopes, allowed, blocked)
         }
             .drop(1) // Drop initial state
             .debounce(500.milliseconds)
@@ -54,17 +61,25 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
             .launchIn(scope)
     }
 
-    @OptIn(InternalSerializationApi::class)
     private fun persistData(store: ModuleStore) {
-        runCatching {
-            PersistentModuleStore.writeStore(backingFile, store)
-        }.onFailure { e ->
-            Timber.e(e, "Failed to persist module data!")
-        }
+        PersistentModuleStore.writeStore(backingFile, store)
     }
 
     private val _enabledModules = MutableStateFlow<Set<String>>(emptySet())
-    private val _moduleScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+    private val _moduleAppScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+
+    /** Full qualified name akin to package imports, with * as wildcard. E.g.
+     * java.lang.*
+     * com.example.MyClass
+     */
+    private val _allowListHookScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+
+    /** Full qualified name akin to package imports, with * as wildcard. E.g.
+     * java.lang.*
+     * com.example.MyClass
+     */
+    private val _blockListHookScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+
     private var isVerboseLog = false
 
     override fun getProtocolVersion() = PROTOCOL_VERSION
@@ -81,7 +96,7 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
     }
 
     override fun getLibxposedApiVersion(): Int {
-        return 102
+        return 102 // TODO CHECK/UPDATE LATEST SUPPORTED VERSION
     }
 
     override fun isSystemServerAttached(): Boolean {
@@ -110,14 +125,18 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
     ): Boolean {
         if (packageName == null) return false
         _enabledModules.update {
-            it + packageName
+            if (enabled) {
+                it + packageName
+            } else {
+                it - packageName
+            }
         }
         return true
     }
 
     override fun getModuleScope(packageName: String?): List<ScopeEntry?> {
         if (packageName == null) return emptyList()
-        val scope = ((_moduleScopes.value[packageName]) ?: emptySet()) + packageName
+        val scope = ((_moduleAppScopes.value[packageName]) ?: emptySet()) + packageName
         return scope.map { ScopeEntry().apply { this.packageName = it } }
     }
 
@@ -129,10 +148,41 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
         if (packageName == null) return false
         // TODO Fix missing userId
         val newScope = mapOf(packageName to fixedScope.map { it.packageName }.toSet())
-        _moduleScopes.update { scopes ->
+        _moduleAppScopes.update { scopes ->
             scopes + newScope
         }
         return true
+    }
+
+    // TODO ADD THESE TO THE INTERFACE
+    fun setAllowHookScopes(
+        packageName: String?,
+        packageScope: List<String>
+    ): Boolean {
+        if (packageName == null) return false
+        _allowListHookScopes.update { scopes ->
+            scopes + mapOf(packageName to packageScope.toSet())
+        }
+        return true
+    }
+
+    fun setBlockHookScopes(
+        packageName: String?,
+        packageScope: List<String>
+    ): Boolean {
+        if (packageName == null) return false
+        _blockListHookScopes.update { scopes ->
+            scopes + mapOf(packageName to packageScope.toSet())
+        }
+        return true
+    }
+
+    fun getBlockedHookScopes(packageName: String?): Set<String>? {
+        return _blockListHookScopes.value[packageName]
+    }
+
+    fun getAllowedHookScopes(packageName: String?): Set<String>? {
+        return _allowListHookScopes.value[packageName]
     }
 
     override fun getIncludeNewApps(packageName: String?): Boolean {

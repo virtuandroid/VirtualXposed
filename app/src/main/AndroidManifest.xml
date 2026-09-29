@@ -67,9 +67,8 @@
 
 
         <activity
-            android:name=".settings.RecommendPluginActivity"
-            android:label="@string/settings_plugin_recommend"
-            android:screenOrientation="portrait"
+            android:name=".compose.ui.ModuleActivity"
+            android:label="@string/settings_module_manage"
             android:theme="@style/VirtualXposedTheme" />
 
         <activity
