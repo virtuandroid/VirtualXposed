@@ -15,9 +15,17 @@ This project is an implementation reference we use to evaluate attacks and defen
 
 ---
 
+### License
+
+This project is based on VirtualXposed and therefore uses the same GPL-3.0 license.
+VirtualXposed is based on VirtualApp, which is owned by Jining Luohe Network Technology Co., LTD.
+Any commericial usage is forbidden as per their [declaration](https://github.com/asLody/VirtualApp/blob/master/README_eng.md)!  
+
+---
+
 ### New features
-- It supports Android 5-17
-- It supports Xposed modules on x86_64 (emulators) via [LSPlant](https://github.com/LSPosed/LSPlant)
+- Support for Android 5-17
+- Support for Xposed modules on x86_64 (emulators) via [LSPlant](https://github.com/LSPosed/LSPlant)
 - Improved app permission handling
 - Improved file sandboxing
 
