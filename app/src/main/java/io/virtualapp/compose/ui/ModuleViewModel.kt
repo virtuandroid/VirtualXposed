@@ -2,7 +2,6 @@ package io.virtualapp.compose.ui
 
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,12 +10,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.lody.virtual.server.vector.VectorManagerService
+import org.matrix.vector.ipc.HookScope
 import org.matrix.vector.ipc.IManagerService
 import timber.log.Timber
+import android.graphics.drawable.Drawable
+import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toPersistentList
 
-@Immutable
-data class ModuleState(
-    val modules: List<ModuleInfo> = emptyList(),
+data class ModuleScreenState(
+    val modules: PersistentList<ModuleInfo> = persistentListOf(),
     val searchQuery: String = "",
     val selectedModule: ModuleInfo? = null
 )
@@ -25,15 +28,133 @@ sealed interface MainIntent {
     data class OnSearchQueryChanged(val query: String) : MainIntent
     data class OnItemClicked(val item: ModuleInfo?) : MainIntent
     data class OnModuleEnable(val enabled: Boolean, val item: ModuleInfo) : MainIntent
-    data class OnModuleBlock(val scopes: Set<String>, val item: ModuleInfo) : MainIntent
-    data class OnModuleAllow(val scopes: Set<String>, val item: ModuleInfo) : MainIntent
+    data class OnModuleScope(val scopes: List<HookScope>, val item: ModuleInfo) : MainIntent
+    data class AddRecommendedScopes(val item: ModuleInfo) : MainIntent
+}
+
+data class ModuleInfo(
+    val packageInfo: PackageInfo,
+    val appName: String,
+    val icon: Drawable?,
+    val xposedMinVersion: String,
+    val xposedDescription: String,
+    val isEnabled: Boolean,
+    /** This should always be sorted, for convenience and to prevent re-sorting on recompositions */
+    val hookScopes: PersistentList<HookScope>,
+) {
+    // Shorthand
+    val packageName = packageInfo.packageName
 }
 
 class ModuleViewModel : ViewModel() {
+    companion object {
+        /**
+         * Return a new list with priorities based on the order of the list
+         */
+        fun List<HookScope>.reindexScopes(): List<HookScope> {
+            return this.mapIndexed { idx, scope -> scope.copy(priority = idx) }
+        }
+
+        fun List<HookScope>.sortedStable(): List<HookScope> {
+            return this.sortedWith(
+                compareBy<HookScope> { it.priority }.thenBy { it.id }
+            )
+        }
+
+        private fun List<ModuleInfo>.sortedModules(): List<ModuleInfo> {
+            return this.sortedWith(compareBy<ModuleInfo> {
+                !it.isEnabled
+            }.thenBy { it.appName })
+        }
+
+        private val recommendedScopes = listOf(
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "java.**",
+                "Block the Java standard library",
+                true,
+                0,
+                "6bef6d94-9903-4fc7-a386-20e09dc5c7bf"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "javax.**",
+                "Block the Java extended library",
+                true,
+                1,
+                "7adb70ba-eb88-4b0a-81a5-d29baae6dba1"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "android.**",
+                "Block core android libraries",
+                true,
+                2,
+                "12a5413d-96f6-4bcd-9115-d9e7ba05a3ca"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "mirror.**",
+                "Block VirtualApp internal classes",
+                true,
+                3,
+                "7389d10b-7e61-4691-8221-3525904904d3"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "com.lody.virtual.**",
+                "Block VirtualApp internal classes",
+                true,
+                4,
+                "e739087a-1adc-4b48-b0e9-599241720263"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "com.virtualxposed.lsplantbridge.**",
+                "Block VirtualXposed internal classes",
+                true,
+                5,
+                "341ac0c0-5a8f-4465-940b-b7ca7724289d"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "com.virtualxposed.log.**",
+                "Block VirtualXposed internal classes",
+                true,
+                6,
+                "10a1bee1-ebcb-441d-8e7c-cd92f7439842"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "org.chickenhook.restrictionbypass.**",
+                "Block VirtualXposed internal classes",
+                true,
+                7,
+                "13b856af-5f71-429f-b26f-aa1426996e79"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "de.robv.android.**",
+                "Block Xposed internal classes",
+                true,
+                8,
+                "ff7297fc-8bf6-4b18-b484-732ea4526a00"
+            ),
+            HookScope(
+                HookScope.ACTION_BLOCK,
+                "me.weishu.exposed.**",
+                "Block Xposed internal classes",
+                true,
+                9,
+                "77416862-1baa-450f-abe9-3fab33dd968c"
+            ),
+        )
+    }
+
     private var binder: IManagerService? = null
-    private val _uiState = MutableStateFlow(ModuleState())
-    val uiState: StateFlow<ModuleState> = _uiState.asStateFlow()
-    private var allModules: List<ModuleInfo> = emptyList()
+    private val _uiState = MutableStateFlow(ModuleScreenState())
+    val uiState: StateFlow<ModuleScreenState> = _uiState.asStateFlow()
+    private var allModules: List<ModuleInfo> = persistentListOf()
 
     private fun handleSearch(newQuery: String) {
         _uiState.update { state ->
@@ -48,14 +169,9 @@ class ModuleViewModel : ViewModel() {
                             )
                 }
             }
-            state.copy(searchQuery = newQuery, modules = newModules.sortedModules())
-        }
-    }
 
-    private fun List<ModuleInfo>.sortedModules(): List<ModuleInfo> {
-        return this.sortedWith(compareBy<ModuleInfo> {
-           !it.isEnabled
-        }.thenBy { it.appName })
+            state.copy(searchQuery = newQuery, modules = newModules.sortedModules().toPersistentList())
+        }
     }
 
     private fun openItem(item: ModuleInfo?) {
@@ -91,8 +207,7 @@ class ModuleViewModel : ViewModel() {
                     metaData.getString("xposeddescription") ?: "N/A"
                 }
 
-                val blocked = binder?.getBlockedHookScopes(packageName)?.toSet() ?: emptySet()
-                val allowed = binder?.getAllowedHookScopes(packageName)?.toSet() ?: emptySet()
+                val scopes = binder?.getHookScopes(packageName)?.sortedStable() ?: emptyList()
                 val isEnabled = binder?.enabledModules?.contains(packageName) == true
 
                 ModuleInfo(
@@ -101,9 +216,8 @@ class ModuleViewModel : ViewModel() {
                     icon = icon,
                     xposedMinVersion = minVersion,
                     xposedDescription = description,
-                    blockListHookScopes = blocked,
-                    allowListHookScopes = allowed,
-                    isEnabled = isEnabled
+                    isEnabled = isEnabled,
+                    hookScopes = scopes.toPersistentList()
                 )
             } else null
         }
@@ -123,7 +237,7 @@ class ModuleViewModel : ViewModel() {
 
             _uiState.update {
                 allModules = xposedModules
-                it.copy(modules = xposedModules.sortedModules())
+                it.copy(modules = xposedModules.sortedModules().toPersistentList())
             }
         }
     }
@@ -137,22 +251,19 @@ class ModuleViewModel : ViewModel() {
         }
     }
 
-    private fun changeModuleBlock(item: ModuleInfo, newScope: Set<String>) {
+    private fun changeModuleScopes(item: ModuleInfo, newScope: List<HookScope>) {
         val packageName = item.packageInfo.packageName
-        val success = binder?.setBlockHookScopes(packageName, newScope.toList()) == true
+        val success = binder?.setHookScopes(packageName, newScope) == true
 
         if (success) {
-            updateModule(item.copy(blockListHookScopes = newScope))
+            updateModule(item.copy(hookScopes = newScope.sortedStable().toPersistentList() ))
         }
     }
 
-    private fun changeModuleAllow(item: ModuleInfo, newScope: Set<String>) {
-        val packageName = item.packageInfo.packageName
-        val success = binder?.setAllowHookScopes(packageName, newScope.toList()) == true
-
-        if (success) {
-            updateModule(item.copy(allowListHookScopes = newScope))
-        }
+    private fun addRecommendedScopes(item: ModuleInfo) {
+        val currentScopes = item.hookScopes.sortedStable()
+        val newScopes = (recommendedScopes + currentScopes).distinctBy { it.id }.reindexScopes().sortedStable().toPersistentList()
+        updateModule(item.copy(hookScopes = newScopes))
     }
 
     private fun updateModule(newModule: ModuleInfo) {
@@ -162,10 +273,11 @@ class ModuleViewModel : ViewModel() {
                 newList.remove(it)
                 newList.add(newModule)
             }
+            val persistentList = newList.sortedModules().toPersistentList()
             if (state.selectedModule?.packageName == newModule.packageName) {
-                state.copy(modules = newList.sortedModules(), selectedModule = newModule)
+                state.copy(modules = persistentList, selectedModule = newModule)
             } else {
-                state.copy(modules = newList.sortedModules())
+                state.copy(modules = persistentList)
             }
         }
     }
@@ -176,8 +288,8 @@ class ModuleViewModel : ViewModel() {
             is MainIntent.OnSearchQueryChanged -> handleSearch(intent.query)
             is MainIntent.OnItemClicked -> openItem(intent.item)
             is MainIntent.OnModuleEnable -> changeModuleEnabled(intent.item, intent.enabled)
-            is MainIntent.OnModuleAllow -> changeModuleAllow(intent.item, intent.scopes)
-            is MainIntent.OnModuleBlock -> changeModuleBlock(intent.item, intent.scopes)
+            is MainIntent.OnModuleScope -> changeModuleScopes(intent.item, intent.scopes)
+            is MainIntent.AddRecommendedScopes -> addRecommendedScopes(intent.item)
         }
     }
 }

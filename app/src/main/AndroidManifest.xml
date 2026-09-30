@@ -69,6 +69,7 @@
         <activity
             android:name=".compose.ui.ModuleActivity"
             android:label="@string/settings_module_manage"
+            android:configChanges="keyboard|keyboardHidden|orientation"
             android:theme="@style/VirtualXposedTheme" />
 
         <activity

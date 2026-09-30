@@ -23,6 +23,7 @@ import org.matrix.vector.ipc.DeviceUser;
 import org.matrix.vector.ipc.IFrameworkInstallReceiver;
 import org.matrix.vector.ipc.ModuleLoadFailure;
 import org.matrix.vector.ipc.ScopeEntry;
+import org.matrix.vector.ipc.HookScope;
 
 /**
  * What the manager app asks the daemon for, once the framework has pushed it a binder.
@@ -779,11 +780,7 @@ interface IManagerService {
 
 
     // Additional functions, not part of the original service manager
-    boolean setAllowHookScopes(@nullable String packageName, in List<String> packageScope);
+    boolean setHookScopes(@nullable String packageName, in List<HookScope> packageScope);
 
-    boolean setBlockHookScopes(@nullable String packageName, in List<String> packageScope);
-
-    @nullable List<String> getBlockedHookScopes(@nullable String packageName);
-
-    @nullable List<String> getAllowedHookScopes(@nullable String packageName);
+    @nullable List<HookScope> getHookScopes(@nullable String packageName);
 }

@@ -127,6 +127,8 @@ dependencies {
     implementation("dev.rikka.rikkax.parcelablelist:parcelablelist:2.0.1")
     implementation("com.google.accompanist:accompanist-drawablepainter:0.37.3")
     implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose")
     implementation("androidx.lifecycle:lifecycle-runtime-compose")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2")
 }

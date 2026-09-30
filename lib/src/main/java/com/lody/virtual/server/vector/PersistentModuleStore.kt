@@ -1,17 +1,19 @@
 package com.lody.virtual.server.vector
 
+import android.annotation.SuppressLint
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.matrix.vector.ipc.HookScope
 import timber.log.Timber
 import java.io.File
-import kotlin.jvm.Throws
 
+
+@SuppressLint("UnsafeOptInUsageError")
 @Serializable
 data class ModuleStore(
     val enabledModules: Set<String> = emptySet(),
     val moduleAppScopes: Map<String, Set<String>> = emptyMap(),
-    val allowListHookScopes: Map<String, Set<String>> = emptyMap(),
-    val blockListHookScopes: Map<String, Set<String>> = emptyMap(),
+    val hookScopes: Map<String, List<HookScope>> = emptyMap(),
 )
 
 object PersistentModuleStore {

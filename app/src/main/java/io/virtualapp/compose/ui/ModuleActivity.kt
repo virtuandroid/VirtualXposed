@@ -1,35 +1,13 @@
 package io.virtualapp.compose.ui
 
-import android.content.pm.PackageInfo
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import android.graphics.drawable.Drawable
-import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.animateBounds
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -41,15 +19,22 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,32 +43,59 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.InputChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.ui.text.font.FontFamily
-import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LookaheadScope
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import io.virtualapp.compose.ui.ModuleViewModel.Companion.reindexScopes
+import kotlinx.collections.immutable.PersistentList
+import org.matrix.vector.ipc.HookScope
 
 class ModuleActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,20 +119,6 @@ class ModuleActivity : ComponentActivity() {
             }
         }
     }
-}
-
-data class ModuleInfo(
-    val packageInfo: PackageInfo,
-    val appName: String,
-    val icon: Drawable?,
-    val xposedMinVersion: String,
-    val xposedDescription: String,
-    val isEnabled: Boolean,
-    val blockListHookScopes: Set<String>,
-    val allowListHookScopes: Set<String>
-) {
-    // Shorthand
-    val packageName = packageInfo.packageName
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -284,9 +282,6 @@ private fun XposedDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val isEnabled = moduleInfo.isEnabled
-    val blocked = moduleInfo.blockListHookScopes
-    val allowed = moduleInfo.allowListHookScopes
-
     val pkg = moduleInfo.packageInfo
     val scrollState = rememberScrollState()
 
@@ -351,45 +346,13 @@ private fun XposedDetailScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        var newAllowedScope by remember { mutableStateOf("") }
-        ScopeManagementCard(
-            title = "Allowed Hook Scopes",
-            scopes = allowed,
-            currentText = newAllowedScope,
-            onTextChanged = { newAllowedScope = it },
-            onAddScope = { scopeToAdd ->
-                val updatedScopes = allowed + scopeToAdd
-                onIntent.invoke(MainIntent.OnModuleAllow(updatedScopes, moduleInfo))
-                newAllowedScope = ""
-            },
-            onRemoveScope = { scopeToRemove ->
-                val updatedScopes = allowed - scopeToRemove
-                onIntent.invoke(MainIntent.OnModuleAllow(updatedScopes, moduleInfo))
-            }
+        HookScopesSection(
+            moduleInfo = moduleInfo,
+            onIntent = onIntent
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        var newBlockedScope by remember { mutableStateOf("") }
-        ScopeManagementCard(
-            title = "Blocked Hook Scopes",
-            scopes = blocked,
-            currentText = newBlockedScope,
-            onTextChanged = { newBlockedScope = it },
-            onAddScope = { scopeToAdd ->
-                val updatedScopes = blocked + scopeToAdd
-                onIntent.invoke(MainIntent.OnModuleBlock(updatedScopes, moduleInfo))
-                newBlockedScope = ""
-            },
-            onRemoveScope = { scopeToRemove ->
-                val updatedScopes = blocked - scopeToRemove
-                onIntent.invoke(MainIntent.OnModuleBlock(updatedScopes, moduleInfo))
-            }
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Module Details
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -438,93 +401,382 @@ private fun XposedDetailScreen(
     }
 }
 
-// Maybe change to on/off checkboxes?
 @Composable
-private fun ScopeManagementCard(
-    title: String,
-    scopes: Set<String>,
-    currentText: String,
-    onTextChanged: (String) -> Unit,
-    onAddScope: (String) -> Unit,
-    onRemoveScope: (String) -> Unit
+private fun HookScopesSection(
+    moduleInfo: ModuleInfo,
+    onIntent: (MainIntent) -> Unit
 ) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    val scopes = moduleInfo.hookScopes
+
+    fun onScopesUpdated(newScopes: List<HookScope>) {
+        onIntent(MainIntent.OnModuleScope(newScopes, moduleInfo))
+    }
+
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize()
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = currentText,
-                onValueChange = onTextChanged,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("java.lang.*") },
-                singleLine = true,
-                trailingIcon = {
-                    IconButton(
-                        onClick = {
-                            if (currentText.isNotBlank()) {
-                                onAddScope(currentText.trim())
-                            }
-                        },
-                        enabled = currentText.isNotBlank()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Add Scope"
-                        )
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            AnimatedContent(
-                targetState = scopes.isNotEmpty(),
-                label = "ScopesContentTransition"
-            ) { hasScopes ->
-                if (hasScopes) {
-                    Column {
-                        scopes.forEach { scope ->
-                            key(scope) {
-                                AnimatedVisibility(
-                                    visible = true,
-                                    enter = fadeIn() + scaleIn(initialScale = 0.8f),
-                                    exit = fadeOut() + scaleOut(targetScale = 0.8f)
-                                ) {
-                                    InputChip(
-                                        selected = false,
-                                        onClick = { },
-                                        label = { Text(scope) },
-                                        trailingIcon = {
-                                            IconButton(
-                                                onClick = { onRemoveScope(scope) },
-                                                modifier = Modifier.size(18.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Close,
-                                                    contentDescription = "Remove $scope"
-                                                )
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                } else {
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "No scopes defined",
+                        text = "Hook Scopes",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Restrict module package hooking. By default all hooks are allowed.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                IconButton(onClick = { showAddDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add Hook Scope",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (scopes.isEmpty()) {
+                Column {
+                    Button(onClick = {
+                        onIntent.invoke(MainIntent.AddRecommendedScopes(moduleInfo))
+                    }, modifier = Modifier.fillMaxSize()) {
+                        Text(text = "Add recommended hook scopes")
+                    }
+                    Text(
+                        text = "No hook scopes configured",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                Column {
+                    LookaheadScope {
+                        scopes.forEachIndexed { index, scope ->
+                            key(scope.id) {
+                                HookScopeItem(
+                                    scope = scope,
+                                    index = index,
+                                    totalSize = scopes.size,
+                                    onToggleActive = { active ->
+                                        val updated = scopes.toMutableList().apply {
+                                            this[index] = this[index].copy(active = active)
+                                        }
+                                        onScopesUpdated(updated)
+                                    },
+                                    onToggleAction = {
+                                        val nextAction =
+                                            if (scope.action == HookScope.ACTION_ALLOW) {
+                                                HookScope.ACTION_BLOCK
+                                            } else {
+                                                HookScope.ACTION_ALLOW
+                                            }
+                                        val updated = scopes.toMutableList().apply {
+                                            this[index] = this[index].copy(action = nextAction)
+                                        }
+                                        onScopesUpdated(updated)
+                                    },
+                                    onDelete = {
+                                        val updated =
+                                            scopes.toMutableList().apply { removeAt(index) }
+                                        onScopesUpdated(updated.reindexScopes())
+                                    },
+                                    onMoveUp = {
+                                        if (index > 0) {
+                                            val updated = scopes.toMutableList()
+                                            val item = updated.removeAt(index)
+                                            updated.add(index - 1, item)
+                                            onScopesUpdated(updated.reindexScopes())
+                                        }
+                                    },
+                                    onMoveDown = {
+                                        if (index < scopes.size - 1) {
+                                            val updated = scopes.toMutableList()
+                                            val item = updated.removeAt(index)
+                                            updated.add(index + 1, item)
+                                            onScopesUpdated(updated.reindexScopes())
+                                        }
+                                    },
+                                    modifier = Modifier.animateBounds(lookaheadScope = this@LookaheadScope)
+                                )
+                                if (index < scopes.size - 1) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+
+    if (showAddDialog) {
+        AddScopeDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { name, pattern, action ->
+                val newScope = HookScope(
+                    name = name,
+                    scope = pattern,
+                    action = action,
+                    active = true,
+                    priority = scopes.size,
+                )
+                onScopesUpdated(scopes + newScope)
+                showAddDialog = false
+            }
+        )
+    }
+}
+
+
+@Composable
+private fun HookScopeItem(
+    scope: HookScope,
+    index: Int,
+    totalSize: Int,
+    modifier: Modifier = Modifier,
+    onToggleActive: (Boolean) -> Unit = {},
+    onToggleAction: () -> Unit = {},
+    onDelete: () -> Unit = {},
+    onMoveUp: () -> Unit = {},
+    onMoveDown: () -> Unit = {},
+) {
+    val isAllow = scope.action == HookScope.ACTION_ALLOW
+    val isEnabled = scope.active
+
+    val actionColor = when {
+        !isEnabled -> MaterialTheme.colorScheme.outline
+        isAllow -> Color(0xFF2E7D32)
+        else -> Color(0xFFC62828)
+    }
+
+    val actionIcon = if (isAllow) Icons.Default.CheckCircle else Icons.Default.Block
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isEnabled) actionColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (scope.active) {
+                IconButton(
+                    onClick = onToggleAction,
+                    enabled = isEnabled
+                ) {
+                    Icon(
+                        imageVector = actionIcon,
+                        contentDescription = if (isAllow) "Allow Scope" else "Block Scope",
+                        tint = actionColor
+                    )
+                }
+            } else {
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = Icons.Default.Clear,
+                        contentDescription = "Delete Scope",
+                    )
+                }
+            }
+
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp)
+            ) {
+                if (scope.name.isNullOrBlank()) {
+                    Text(
+                        text = "No name",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontStyle = FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                } else {
+                    Text(
+                        text = scope.name ?: "",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (isEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+
+            Column {
+                IconButton(
+                    onClick = onMoveUp,
+                    enabled = index > 0,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowUp,
+                        contentDescription = "Move Up",
+                        tint = if (index > 0) MaterialTheme.colorScheme.onSurfaceVariant else Color.Transparent
+                    )
+                }
+                IconButton(
+                    onClick = onMoveDown,
+                    enabled = index < totalSize - 1,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Move Down",
+                        tint = if (index < totalSize - 1) MaterialTheme.colorScheme.onSurfaceVariant else Color.Transparent
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            Switch(
+                checked = scope.active,
+                onCheckedChange = onToggleActive,
+                modifier = Modifier.scale(0.8f)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = scope.scope,
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace,
+                color = if (isEnabled) actionColor else MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddScopeDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, scope: String, action: Int) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var pattern by remember { mutableStateOf("") }
+    var action by remember { mutableIntStateOf(HookScope.ACTION_ALLOW) }
+    var patternError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Hook Scope") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Rule Name (Optional)") },
+                    placeholder = { Text("e.g. Block Reflection") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = pattern,
+                    onValueChange = {
+                        pattern = it
+                        patternError = false
+                    },
+                    label = { Text("Scope Glob Pattern") },
+                    placeholder = { Text("e.g. com.example.**") },
+                    singleLine = true,
+                    isError = patternError,
+                    supportingText = {
+                        if (patternError) {
+                            Text("Scope pattern cannot be empty")
+                        } else {
+                            Text("Use * for shallow match\nUse ** for deep match")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    text = "Action",
+                    style = MaterialTheme.typography.labelMedium
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = action == HookScope.ACTION_ALLOW,
+                        onClick = { action = HookScope.ACTION_ALLOW },
+                        label = { Text("Allow") },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF2E7D32)
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    FilterChip(
+                        selected = action == HookScope.ACTION_BLOCK,
+                        onClick = { action = HookScope.ACTION_BLOCK },
+                        label = { Text("Block") },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Block,
+                                contentDescription = null,
+                                tint = Color(0xFFC62828)
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (pattern.isBlank()) {
+                        patternError = true
+                    } else {
+                        onConfirm(name.trim(), pattern.trim(), action)
+                    }
+                }
+            ) {
+                Text("Add")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -620,5 +872,33 @@ fun SettingsSearch(
         onDispose {
             keyboardController?.hide()
         }
+    }
+}
+
+@Composable
+@Preview
+private fun HookScopePreviewAllow() {
+    HookScopeItem(
+        HookScope(
+            HookScope.ACTION_ALLOW,
+            "java.lang.**", "Allow the Java Library", true, 0
+        ),
+        index = 0,
+        totalSize = 10,
+    ) {
+    }
+}
+
+@Composable
+@Preview
+private fun HookScopePreviewDeny() {
+    HookScopeItem(
+        HookScope(
+            HookScope.ACTION_BLOCK,
+            "java.lang.**", "Deny the Java Library", true, 0
+        ),
+        index = 0,
+        totalSize = 10,
+    ) {
     }
 }

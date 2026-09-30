@@ -21,8 +21,8 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.serialization.InternalSerializationApi
 import org.matrix.vector.ipc.DeviceUser
+import org.matrix.vector.ipc.HookScope
 import org.matrix.vector.ipc.IFrameworkInstallReceiver
 import org.matrix.vector.ipc.IManagerService
 import org.matrix.vector.ipc.ModuleLoadFailure
@@ -40,8 +40,7 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
         val store = PersistentModuleStore.getStore(backingFile) ?: return
         _enabledModules.value = store.enabledModules.toSet()
         _moduleAppScopes.value = store.moduleAppScopes.mapValues { it.value.toSet() }
-        _allowListHookScopes.value = store.allowListHookScopes.mapValues { it.value.toSet() }
-        _blockListHookScopes.value = store.blockListHookScopes.mapValues { it.value.toSet() }
+        _hookScopes.value = store.hookScopes
         setupStoreJob()
     }
 
@@ -50,35 +49,27 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
         combine(
             _enabledModules,
             _moduleAppScopes,
-            _allowListHookScopes,
-            _blockListHookScopes
-        ) { enabled, scopes, allowed, blocked ->
-            ModuleStore(enabled, scopes, allowed, blocked)
+            _hookScopes,
+        ) { enabled, scopes, hookScopes ->
+            ModuleStore(
+                enabled,
+                scopes,
+                // At all times prevent duplicate IDs
+                hookScopes.mapValues { (_, value) -> value.distinctBy { it.id } }
+            )
         }
             .drop(1) // Drop initial state
             .debounce(500.milliseconds)
-            .onEach { store -> persistData(store) }
+            .onEach { store ->
+                PersistentModuleStore.writeStore(backingFile, store)
+            }
             .launchIn(scope)
-    }
-
-    private fun persistData(store: ModuleStore) {
-        PersistentModuleStore.writeStore(backingFile, store)
     }
 
     private val _enabledModules = MutableStateFlow<Set<String>>(emptySet())
     private val _moduleAppScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
 
-    /** Full qualified name akin to package imports, with * as wildcard. E.g.
-     * java.lang.*
-     * com.example.MyClass
-     */
-    private val _allowListHookScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
-
-    /** Full qualified name akin to package imports, with * as wildcard. E.g.
-     * java.lang.*
-     * com.example.MyClass
-     */
-    private val _blockListHookScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+    private val _hookScopes = MutableStateFlow<Map<String, List<HookScope>>>(emptyMap())
 
     private var isVerboseLog = false
 
@@ -152,36 +143,6 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
             scopes + newScope
         }
         return true
-    }
-
-    override fun setAllowHookScopes(
-        packageName: String?,
-        packageScope: List<String>
-    ): Boolean {
-        if (packageName == null) return false
-        _allowListHookScopes.update { scopes ->
-            scopes + mapOf(packageName to packageScope.toSet())
-        }
-        return true
-    }
-
-    override fun setBlockHookScopes(
-        packageName: String?,
-        packageScope: List<String>
-    ): Boolean {
-        if (packageName == null) return false
-        _blockListHookScopes.update { scopes ->
-            scopes + mapOf(packageName to packageScope.toSet())
-        }
-        return true
-    }
-
-    override fun getBlockedHookScopes(packageName: String?): List<String?>? {
-        return _blockListHookScopes.value[packageName]?.toList()
-    }
-
-    override fun getAllowedHookScopes(packageName: String?): List<String?>? {
-        return _allowListHookScopes.value[packageName]?.toList()
     }
 
     override fun getIncludeNewApps(packageName: String?): Boolean {
@@ -315,5 +276,21 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
 
     override fun getManagerApk(): ParcelFileDescriptor? {
         return null
+    }
+
+    override fun setHookScopes(
+        packageName: String?,
+        packageScope: List<HookScope?>?
+    ): Boolean {
+        if (packageName == null || packageScope == null) return false
+        _hookScopes.update { scopes ->
+            val newScope = mapOf(packageName to packageScope.filterNotNull())
+            scopes + newScope
+        }
+        return true
+    }
+
+    override fun getHookScopes(packageName: String?): List<HookScope?>? {
+        return _hookScopes.value[packageName]
     }
 }
