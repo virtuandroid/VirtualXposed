@@ -776,4 +776,14 @@ interface IManagerService {
 
     /** APatch. */
     const int ROOT_APATCH = 5;
+
+
+    // Additional functions, not part of the original service manager
+    boolean setAllowHookScopes(@nullable String packageName, in List<String> packageScope);
+
+    boolean setBlockHookScopes(@nullable String packageName, in List<String> packageScope);
+
+    @nullable List<String> getBlockedHookScopes(@nullable String packageName);
+
+    @nullable List<String> getAllowedHookScopes(@nullable String packageName);
 }

@@ -12,24 +12,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.lody.virtual.server.vector.VectorManagerService
 import org.matrix.vector.ipc.IManagerService
+import timber.log.Timber
 
 @Immutable
 data class ModuleState(
     val modules: List<ModuleInfo> = emptyList(),
-    // Changeable properties
-    val moduleProperties: Map<String, ModuleProperty> = emptyMap(),
     val searchQuery: String = "",
     val selectedModule: ModuleInfo? = null
-)
-
-data class ModuleProperty(
-    val isEnabled: Boolean
 )
 
 sealed interface MainIntent {
     data class OnSearchQueryChanged(val query: String) : MainIntent
     data class OnItemClicked(val item: ModuleInfo?) : MainIntent
-    data class OnModuleChange(val enabled: Boolean, val item: ModuleInfo) : MainIntent
+    data class OnModuleEnable(val enabled: Boolean, val item: ModuleInfo) : MainIntent
+    data class OnModuleBlock(val scopes: Set<String>, val item: ModuleInfo) : MainIntent
+    data class OnModuleAllow(val scopes: Set<String>, val item: ModuleInfo) : MainIntent
 }
 
 class ModuleViewModel : ViewModel() {
@@ -39,7 +36,7 @@ class ModuleViewModel : ViewModel() {
     private var allModules: List<ModuleInfo> = emptyList()
 
     private fun handleSearch(newQuery: String) {
-        _uiState.update {
+        _uiState.update { state ->
             val newModules = if (newQuery.isBlank()) {
                 allModules
             } else {
@@ -51,21 +48,18 @@ class ModuleViewModel : ViewModel() {
                             )
                 }
             }
-            it.copy(searchQuery = newQuery, modules = newModules)
+            state.copy(searchQuery = newQuery, modules = newModules.sortedModules())
         }
+    }
+
+    private fun List<ModuleInfo>.sortedModules(): List<ModuleInfo> {
+        return this.sortedWith(compareBy<ModuleInfo> {
+           !it.isEnabled
+        }.thenBy { it.appName })
     }
 
     private fun openItem(item: ModuleInfo?) {
         _uiState.update { it.copy(selectedModule = item) }
-    }
-
-
-    private fun getXposedProperties( modules: List<ModuleInfo>): Map<String, ModuleProperty> {
-        val enabledModules = binder?.enabledModules
-        return modules.associate {
-            val isEnabled = enabledModules?.contains(it.packageName) == true
-            it.packageName to ModuleProperty(isEnabled)
-        }
     }
 
     private fun getXposedPackages(
@@ -77,8 +71,9 @@ class ModuleViewModel : ViewModel() {
             val isXposed = metaData?.getBoolean("xposedmodule", false) ?: false
 
             if (isXposed) {
+                val packageName = pkg.packageName
                 val appName =
-                    pkg.applicationInfo?.loadLabel(packageManager)?.toString() ?: pkg.packageName
+                    pkg.applicationInfo?.loadLabel(packageManager)?.toString() ?: packageName
                 val icon = pkg.applicationInfo?.loadIcon(packageManager)
 
                 val minVersion =
@@ -88,7 +83,7 @@ class ModuleViewModel : ViewModel() {
                 val descriptionRes = metaData.getInt("xposeddescription", 0)
                 val description = if (descriptionRes != 0 && pkg.applicationInfo != null) {
                     runCatching {
-                        packageManager.getText(pkg.packageName, descriptionRes, pkg.applicationInfo)
+                        packageManager.getText(packageName, descriptionRes, pkg.applicationInfo)
                             .toString()
                     }
                         .getOrDefault("N/A")
@@ -96,12 +91,19 @@ class ModuleViewModel : ViewModel() {
                     metaData.getString("xposeddescription") ?: "N/A"
                 }
 
+                val blocked = binder?.getBlockedHookScopes(packageName)?.toSet() ?: emptySet()
+                val allowed = binder?.getAllowedHookScopes(packageName)?.toSet() ?: emptySet()
+                val isEnabled = binder?.enabledModules?.contains(packageName) == true
+
                 ModuleInfo(
                     packageInfo = pkg,
                     appName = appName,
                     icon = icon,
                     xposedMinVersion = minVersion,
-                    xposedDescription = description
+                    xposedDescription = description,
+                    blockListHookScopes = blocked,
+                    allowListHookScopes = allowed,
+                    isEnabled = isEnabled
                 )
             } else null
         }
@@ -118,33 +120,64 @@ class ModuleViewModel : ViewModel() {
             ).list.filterNotNull()
 
             val xposedModules = getXposedPackages(packages, packageManger)
-            val properties = getXposedProperties(xposedModules)
 
             _uiState.update {
                 allModules = xposedModules
-                it.copy(modules = xposedModules, moduleProperties = properties)
+                it.copy(modules = xposedModules.sortedModules())
             }
         }
     }
 
-    fun changeModuleEnabled(enable: Boolean, item: ModuleInfo) {
+    fun changeModuleEnabled(item: ModuleInfo, enable: Boolean) {
         val packageName = item.packageInfo.packageName
         val success = binder?.setModuleEnabled(packageName, enable) == true
 
         if (success) {
-            _uiState.update {
-                val currentProperties = it.moduleProperties[packageName] ?: return@update it
-                val newMap = mapOf(packageName to currentProperties.copy(isEnabled = enable))
-                it.copy(moduleProperties = it.moduleProperties + newMap)
+            updateModule(item.copy(isEnabled = enable))
+        }
+    }
+
+    private fun changeModuleBlock(item: ModuleInfo, newScope: Set<String>) {
+        val packageName = item.packageInfo.packageName
+        val success = binder?.setBlockHookScopes(packageName, newScope.toList()) == true
+
+        if (success) {
+            updateModule(item.copy(blockListHookScopes = newScope))
+        }
+    }
+
+    private fun changeModuleAllow(item: ModuleInfo, newScope: Set<String>) {
+        val packageName = item.packageInfo.packageName
+        val success = binder?.setAllowHookScopes(packageName, newScope.toList()) == true
+
+        if (success) {
+            updateModule(item.copy(allowListHookScopes = newScope))
+        }
+    }
+
+    private fun updateModule(newModule: ModuleInfo) {
+        _uiState.update { state ->
+            val newList = state.modules.toMutableList()
+            state.modules.firstOrNull { it.packageName == newModule.packageName }?.let {
+                newList.remove(it)
+                newList.add(newModule)
+            }
+            if (state.selectedModule?.packageName == newModule.packageName) {
+                state.copy(modules = newList.sortedModules(), selectedModule = newModule)
+            } else {
+                state.copy(modules = newList.sortedModules())
             }
         }
     }
 
     fun processIntent(intent: MainIntent) {
+        Timber.i("Process intent: $intent")
         when (intent) {
             is MainIntent.OnSearchQueryChanged -> handleSearch(intent.query)
             is MainIntent.OnItemClicked -> openItem(intent.item)
-            is MainIntent.OnModuleChange -> changeModuleEnabled(intent.enabled, intent.item)
+            is MainIntent.OnModuleEnable -> changeModuleEnabled(intent.item, intent.enabled)
+            is MainIntent.OnModuleAllow -> changeModuleAllow(intent.item, intent.scopes)
+            is MainIntent.OnModuleBlock -> changeModuleBlock(intent.item, intent.scopes)
         }
     }
 }

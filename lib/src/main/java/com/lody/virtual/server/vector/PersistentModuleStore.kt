@@ -21,8 +21,7 @@ object PersistentModuleStore {
 
     fun writeStore(backingFile: File, store: ModuleStore) {
         runCatching {
-            println("SAVBING STORE $store")
-            Timber.i("Saving store: $store")
+            Timber.d("Saving store: $store")
             val storeJson = json.encodeToString(store)
             backingFile.writeText(storeJson)
         }.onFailure { e ->

@@ -154,8 +154,7 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
         return true
     }
 
-    // TODO ADD THESE TO THE INTERFACE
-    fun setAllowHookScopes(
+    override fun setAllowHookScopes(
         packageName: String?,
         packageScope: List<String>
     ): Boolean {
@@ -166,7 +165,7 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
         return true
     }
 
-    fun setBlockHookScopes(
+    override fun setBlockHookScopes(
         packageName: String?,
         packageScope: List<String>
     ): Boolean {
@@ -177,12 +176,12 @@ class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
         return true
     }
 
-    fun getBlockedHookScopes(packageName: String?): Set<String>? {
-        return _blockListHookScopes.value[packageName]
+    override fun getBlockedHookScopes(packageName: String?): List<String?>? {
+        return _blockListHookScopes.value[packageName]?.toList()
     }
 
-    fun getAllowedHookScopes(packageName: String?): Set<String>? {
-        return _allowListHookScopes.value[packageName]
+    override fun getAllowedHookScopes(packageName: String?): List<String?>? {
+        return _allowListHookScopes.value[packageName]?.toList()
     }
 
     override fun getIncludeNewApps(packageName: String?): Boolean {

@@ -27,7 +27,9 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -39,11 +41,12 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,18 +57,25 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.text.font.FontFamily
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -105,6 +115,9 @@ data class ModuleInfo(
     val icon: Drawable?,
     val xposedMinVersion: String,
     val xposedDescription: String,
+    val isEnabled: Boolean,
+    val blockListHookScopes: Set<String>,
+    val allowListHookScopes: Set<String>
 ) {
     // Shorthand
     val packageName = packageInfo.packageName
@@ -129,7 +142,8 @@ fun AppsScreen(
                         (fadeOut(animationSpec = tween(150)) + slideOutHorizontally { it / 2 })
             }
         },
-        label = "IfElseTransition"
+        label = "IfElseTransition",
+        contentKey = { it?.packageName }
     ) { currentModule ->
         if (currentModule != null) {
             Scaffold(
@@ -152,15 +166,7 @@ fun AppsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
-                    onEnabledChange = {
-                        onIntent.invoke(
-                            MainIntent.OnModuleChange(
-                                it,
-                                currentModule
-                            )
-                        )
-                    },
-                    isEnabled = state.moduleProperties[currentModule.packageName]?.isEnabled == true
+                    onIntent = onIntent,
                 )
             }
         } else {
@@ -185,14 +191,11 @@ fun AppsScreen(
                         contentPadding = PaddingValues(16.dp)
                     ) {
                         items(
-                            items = state.modules.sortedWith(compareBy<ModuleInfo> {
-                                state.moduleProperties[it.packageName]?.isEnabled == false
-                            }.thenBy { it.appName }),
+                            items = state.modules,
                             key = { it.packageInfo.packageName }
                         ) { moduleInfo ->
                             XposedListItem(
                                 moduleInfo = moduleInfo,
-                                moduleProperties = state.moduleProperties[moduleInfo.packageName],
                                 onClick = { onIntent(MainIntent.OnItemClicked(moduleInfo)) },
                                 modifier = Modifier.animateItem(
                                     fadeInSpec = tween(durationMillis = 150),
@@ -211,11 +214,10 @@ fun AppsScreen(
 @Composable
 private fun XposedListItem(
     moduleInfo: ModuleInfo,
-    moduleProperties: ModuleProperty?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val enabled = moduleProperties?.isEnabled == true
+    val enabled = moduleInfo.isEnabled
 
     Card(
         onClick = onClick,
@@ -278,10 +280,13 @@ private fun XposedListItem(
 @Composable
 private fun XposedDetailScreen(
     moduleInfo: ModuleInfo,
-    isEnabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
+    onIntent: (MainIntent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isEnabled = moduleInfo.isEnabled
+    val blocked = moduleInfo.blockListHookScopes
+    val allowed = moduleInfo.allowListHookScopes
+
     val pkg = moduleInfo.packageInfo
     val scrollState = rememberScrollState()
 
@@ -337,13 +342,54 @@ private fun XposedDetailScreen(
                 }
                 Switch(
                     checked = isEnabled,
-                    onCheckedChange = onEnabledChange
+                    onCheckedChange = { checked ->
+                        onIntent.invoke(MainIntent.OnModuleEnable(enabled = checked, moduleInfo))
+                    }
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        var newAllowedScope by remember { mutableStateOf("") }
+        ScopeManagementCard(
+            title = "Allowed Hook Scopes",
+            scopes = allowed,
+            currentText = newAllowedScope,
+            onTextChanged = { newAllowedScope = it },
+            onAddScope = { scopeToAdd ->
+                val updatedScopes = allowed + scopeToAdd
+                onIntent.invoke(MainIntent.OnModuleAllow(updatedScopes, moduleInfo))
+                newAllowedScope = ""
+            },
+            onRemoveScope = { scopeToRemove ->
+                val updatedScopes = allowed - scopeToRemove
+                onIntent.invoke(MainIntent.OnModuleAllow(updatedScopes, moduleInfo))
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        var newBlockedScope by remember { mutableStateOf("") }
+        ScopeManagementCard(
+            title = "Blocked Hook Scopes",
+            scopes = blocked,
+            currentText = newBlockedScope,
+            onTextChanged = { newBlockedScope = it },
+            onAddScope = { scopeToAdd ->
+                val updatedScopes = blocked + scopeToAdd
+                onIntent.invoke(MainIntent.OnModuleBlock(updatedScopes, moduleInfo))
+                newBlockedScope = ""
+            },
+            onRemoveScope = { scopeToRemove ->
+                val updatedScopes = blocked - scopeToRemove
+                onIntent.invoke(MainIntent.OnModuleBlock(updatedScopes, moduleInfo))
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Module Details
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -374,6 +420,7 @@ private fun XposedDetailScreen(
                 val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     pkg.longVersionCode.toString()
                 } else {
+                    @Suppress("DEPRECATION")
                     pkg.versionCode.toString()
                 }
                 DebugInfoRow("Version Name", pkg.versionName ?: "N/A")
@@ -388,6 +435,95 @@ private fun XposedDetailScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+// Maybe change to on/off checkboxes?
+@Composable
+private fun ScopeManagementCard(
+    title: String,
+    scopes: Set<String>,
+    currentText: String,
+    onTextChanged: (String) -> Unit,
+    onAddScope: (String) -> Unit,
+    onRemoveScope: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = currentText,
+                onValueChange = onTextChanged,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("java.lang.*") },
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            if (currentText.isNotBlank()) {
+                                onAddScope(currentText.trim())
+                            }
+                        },
+                        enabled = currentText.isNotBlank()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Scope"
+                        )
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            AnimatedContent(
+                targetState = scopes.isNotEmpty(),
+                label = "ScopesContentTransition"
+            ) { hasScopes ->
+                if (hasScopes) {
+                    Column {
+                        scopes.forEach { scope ->
+                            key(scope) {
+                                AnimatedVisibility(
+                                    visible = true,
+                                    enter = fadeIn() + scaleIn(initialScale = 0.8f),
+                                    exit = fadeOut() + scaleOut(targetScale = 0.8f)
+                                ) {
+                                    InputChip(
+                                        selected = false,
+                                        onClick = { },
+                                        label = { Text(scope) },
+                                        trailingIcon = {
+                                            IconButton(
+                                                onClick = { onRemoveScope(scope) },
+                                                modifier = Modifier.size(18.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Remove $scope"
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "No scopes defined",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
 
