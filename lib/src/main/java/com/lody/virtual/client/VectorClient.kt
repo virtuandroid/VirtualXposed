@@ -16,6 +16,8 @@ object VectorClient {
 
     @JvmStatic
     fun initVectorManager(appContext: Context, applicationInfo: ApplicationInfo, appClassLoader: ClassLoader) {
+        if (!isVector(applicationInfo)) return
+
         CoroutineScope(Dispatchers.IO).launch {
             val binder = VectorManagerService.getService().asBinder()
             sendBinderToManager(appClassLoader, binder)
