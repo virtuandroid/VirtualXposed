@@ -39,6 +39,8 @@ data class ModuleInfo(
     val xposedMinVersion: String,
     val xposedDescription: String,
     val isEnabled: Boolean,
+    val rewriteValues: Boolean,
+    val fullGuestAccess: Boolean,
     /** This should always be sorted, for convenience and to prevent re-sorting on recompositions */
     val hookScopes: PersistentList<HookScope>,
 ) {
@@ -217,6 +219,8 @@ class ModuleViewModel : ViewModel() {
                     xposedMinVersion = minVersion,
                     xposedDescription = description,
                     isEnabled = isEnabled,
+                    rewriteValues = true,
+                    fullGuestAccess = false, // TODO USE API
                     hookScopes = scopes.toPersistentList()
                 )
             } else null
