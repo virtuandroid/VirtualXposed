@@ -29,6 +29,8 @@ sealed interface MainIntent {
     data class OnItemClicked(val item: ModuleInfo?) : MainIntent
     data class OnModuleEnable(val enabled: Boolean, val item: ModuleInfo) : MainIntent
     data class OnModuleScope(val scopes: List<HookScope>, val item: ModuleInfo) : MainIntent
+    data class OnModuleRewriteSetting(val enabled: Boolean, val item: ModuleInfo) : MainIntent
+    data class OnModuleGuestSetting(val enabled: Boolean, val item: ModuleInfo) : MainIntent
     data class AddRecommendedScopes(val item: ModuleInfo) : MainIntent
 }
 
@@ -39,7 +41,7 @@ data class ModuleInfo(
     val xposedMinVersion: String,
     val xposedDescription: String,
     val isEnabled: Boolean,
-    val rewriteValues: Boolean,
+    val rewriteMethods: Boolean,
     val fullGuestAccess: Boolean,
     /** This should always be sorted, for convenience and to prevent re-sorting on recompositions */
     val hookScopes: PersistentList<HookScope>,
@@ -172,7 +174,10 @@ class ModuleViewModel : ViewModel() {
                 }
             }
 
-            state.copy(searchQuery = newQuery, modules = newModules.sortedModules().toPersistentList())
+            state.copy(
+                searchQuery = newQuery,
+                modules = newModules.sortedModules().toPersistentList()
+            )
         }
     }
 
@@ -184,6 +189,10 @@ class ModuleViewModel : ViewModel() {
         packages: List<PackageInfo>,
         packageManager: PackageManager
     ): List<ModuleInfo> {
+        val enabledModules = binder?.enabledModules
+        val methodRewriteList = binder?.methodRewriteAllowed
+        val fullGuestAccessList = binder?.methodRewriteAllowed
+
         return packages.mapNotNull { pkg ->
             val metaData = pkg.applicationInfo?.metaData
             val isXposed = metaData?.getBoolean("xposedmodule", false) ?: false
@@ -210,7 +219,9 @@ class ModuleViewModel : ViewModel() {
                 }
 
                 val scopes = binder?.getHookScopes(packageName)?.sortedStable() ?: emptyList()
-                val isEnabled = binder?.enabledModules?.contains(packageName) == true
+                val isEnabled = enabledModules?.contains(packageName) ?: false
+                val rewriteAllowed = methodRewriteList?.contains(packageName) ?: true
+                val guestAccess = fullGuestAccessList?.contains(packageName) ?: false
 
                 ModuleInfo(
                     packageInfo = pkg,
@@ -219,8 +230,8 @@ class ModuleViewModel : ViewModel() {
                     xposedMinVersion = minVersion,
                     xposedDescription = description,
                     isEnabled = isEnabled,
-                    rewriteValues = true,
-                    fullGuestAccess = false, // TODO USE API
+                    rewriteMethods = rewriteAllowed,
+                    fullGuestAccess = guestAccess,
                     hookScopes = scopes.toPersistentList()
                 )
             } else null
@@ -246,6 +257,25 @@ class ModuleViewModel : ViewModel() {
         }
     }
 
+    fun changeModuleGuestAccess(item: ModuleInfo, enable: Boolean) {
+        val packageName = item.packageInfo.packageName
+        val success = binder?.setGuestVirtualizationAllowed(packageName, enable) == true
+
+        if (success) {
+            updateModule(item.copy(fullGuestAccess = enable))
+        }
+    }
+
+    fun changeModuleMethodRewrite(item: ModuleInfo, enable: Boolean) {
+        val packageName = item.packageInfo.packageName
+        val success = binder?.setMethodRewriteAllowed(packageName, enable) == true
+
+        if (success) {
+            updateModule(item.copy(rewriteMethods = enable))
+        }
+    }
+
+
     fun changeModuleEnabled(item: ModuleInfo, enable: Boolean) {
         val packageName = item.packageInfo.packageName
         val success = binder?.setModuleEnabled(packageName, enable) == true
@@ -260,13 +290,15 @@ class ModuleViewModel : ViewModel() {
         val success = binder?.setHookScopes(packageName, newScope) == true
 
         if (success) {
-            updateModule(item.copy(hookScopes = newScope.sortedStable().toPersistentList() ))
+            updateModule(item.copy(hookScopes = newScope.sortedStable().toPersistentList()))
         }
     }
 
     private fun addRecommendedScopes(item: ModuleInfo) {
         val currentScopes = item.hookScopes.sortedStable()
-        val newScopes = (recommendedScopes + currentScopes).distinctBy { it.id }.reindexScopes().sortedStable().toPersistentList()
+        val newScopes =
+            (recommendedScopes + currentScopes).distinctBy { it.id }.reindexScopes().sortedStable()
+                .toPersistentList()
         updateModule(item.copy(hookScopes = newScopes))
     }
 
@@ -294,6 +326,8 @@ class ModuleViewModel : ViewModel() {
             is MainIntent.OnModuleEnable -> changeModuleEnabled(intent.item, intent.enabled)
             is MainIntent.OnModuleScope -> changeModuleScopes(intent.item, intent.scopes)
             is MainIntent.AddRecommendedScopes -> addRecommendedScopes(intent.item)
+            is MainIntent.OnModuleGuestSetting -> changeModuleGuestAccess(intent.item, intent.enabled)
+            is MainIntent.OnModuleRewriteSetting -> changeModuleMethodRewrite(intent.item, intent.enabled)
         }
     }
 }

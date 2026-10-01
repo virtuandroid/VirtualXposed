@@ -66,9 +66,9 @@ android {
 
 dependencies {
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
-    implementation(project(":lib"))
+    implementation(project(":virtual-core"))
     implementation(project(":launcher"))
-    implementation(project(":exposed-core"))
+    implementation(project(":xposed-core"))
     implementation(project(":log-client"))
 
     // Android Lib / Kotlin
@@ -77,7 +77,6 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
 
-    implementation("androidx.multidex:multidex:2.0.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.annotation:annotation:1.8.2")
@@ -92,18 +91,9 @@ dependencies {
     // ThirdParty
     implementation("com.jonathanfinerty.once:once:1.3.1")
 
-    val appCenterSdkVersion = "3.0.0"
-    implementation("com.microsoft.appcenter:appcenter-analytics:$appCenterSdkVersion")
-    implementation("com.microsoft.appcenter:appcenter-crashes:$appCenterSdkVersion")
-
-    implementation("com.kyleduo.switchbutton:library:2.1.0")
-
     implementation("com.github.AlexLiuSheng:CheckVersionLib:2.2.1") {
         exclude(group = "androidx.appcompat")
     }
-
-    implementation("com.github.medyo:android-about-page:1.2.2")
-    implementation("moe.feng:AlipayZeroSdk:1.1")
 
     // Glide
     implementation("com.github.bumptech.glide:glide:4.16.0")

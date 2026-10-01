@@ -4,13 +4,11 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
-import android.util.Log;
 
 import com.lody.virtual.client.VClientImpl;
 import com.lody.virtual.client.core.VirtualCore;
 import com.lody.virtual.os.VUserHandle;
 import com.lody.virtual.remote.InstalledAppInfo;
-import com.microsoft.appcenter.crashes.Crashes;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -69,7 +67,7 @@ public class MyCrashHandler extends BaseCrashHandler {
         if (exceptionType.equals(lastCrashType) && (now - lastCrash) < TimeUnit.MINUTES.toMillis(1)) {
             // continues crash, do not upload
         } else {
-            Crashes.trackError(e, properties, null);
+            // Crashes.trackError(e, properties, null);
         }
 
         Timber.e(e, "Uncaught exception on thread: %s", t);

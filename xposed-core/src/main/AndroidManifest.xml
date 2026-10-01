@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-sdk tools:overrideLibrary="de.robv.android.xposed" />
+
+    <application>
+        <service
+            android:name="me.weishu.exposed.LogcatService"
+            android:enabled="true"
+            android:exported="false"
+            android:process=":logcat" />
+    </application>
+</manifest>

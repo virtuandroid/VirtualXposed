@@ -94,13 +94,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import io.virtualapp.compose.ui.ModuleViewModel.Companion.reindexScopes
-import kotlinx.collections.immutable.PersistentList
 import org.matrix.vector.ipc.HookScope
 
 class ModuleActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
 
         setContent {
             MaterialTheme {
@@ -374,9 +372,9 @@ private fun XposedDetailScreen(
                     )
                 }
                 Switch(
-                    checked = moduleInfo.rewriteValues,
+                    checked = moduleInfo.rewriteMethods,
                     onCheckedChange = { checked ->
-                        // TODO Support this in the API
+                        onIntent.invoke(MainIntent.OnModuleRewriteSetting(checked, moduleInfo))
                     }
                 )
             }
@@ -413,7 +411,7 @@ private fun XposedDetailScreen(
                 Switch(
                     checked = moduleInfo.fullGuestAccess,
                     onCheckedChange = { checked ->
-                        // TODO Support this in the API
+                        onIntent.invoke(MainIntent.OnModuleGuestSetting(checked, moduleInfo))
                     }
                 )
             }

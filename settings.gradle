@@ -1,6 +1,0 @@
-plugins {
-    id('org.gradle.toolchains.foojay-resolver-convention') version '0.8.0'
-}
-
-include ':lib', ':app', ':launcher', ':restrictionbypass', ':exposed-core', ':lsplantbridge', ':log-client'
-rootProject.name="VirtualXposed"
