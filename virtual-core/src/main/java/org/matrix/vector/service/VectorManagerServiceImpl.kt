@@ -1,4 +1,4 @@
-package com.lody.virtual.server.vector
+package org.matrix.vector.service
 
 import android.content.Intent
 import android.content.pm.PackageInfo
@@ -30,6 +30,7 @@ import org.matrix.vector.ipc.ScopeEntry
 import rikka.parcelablelist.ParcelableListSlice
 import timber.log.Timber
 import java.io.File
+import kotlin.collections.get
 import kotlin.time.Duration.Companion.milliseconds
 
 class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {

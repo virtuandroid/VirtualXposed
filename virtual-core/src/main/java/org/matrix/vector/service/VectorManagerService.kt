@@ -1,4 +1,4 @@
-package com.lody.virtual.server.vector
+package org.matrix.vector.service
 
 import android.app.Service
 import android.content.ComponentName
@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.os.Process
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.os.VBinder
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -94,7 +95,7 @@ class VectorManagerService : Service() {
         // This service is privileged, therefore to prevent abuse we only allow
         // our own process (engine process) to bind to it.
         val callingPid = VBinder.getCallingPid()
-        val myPid = android.os.Process.myPid()
+        val myPid = Process.myPid()
         return callingPid == myPid
     }
 

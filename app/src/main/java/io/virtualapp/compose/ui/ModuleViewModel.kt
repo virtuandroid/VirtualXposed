@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import com.lody.virtual.server.vector.VectorManagerService
+import org.matrix.vector.service.VectorManagerService
 import org.matrix.vector.ipc.HookScope
 import org.matrix.vector.ipc.IManagerService
 import timber.log.Timber

@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.virtualxposed.log"
+    namespace = "com.virtualxposed.shared"
     compileSdk {
         version = release(37)
     }

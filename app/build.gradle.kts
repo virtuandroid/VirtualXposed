@@ -69,7 +69,7 @@ dependencies {
     implementation(project(":virtual-core"))
     implementation(project(":launcher"))
     implementation(project(":xposed-core"))
-    implementation(project(":log-client"))
+    implementation(project(":shared-helper"))
 
     // Android Lib / Kotlin
     // Note: Pass your 'kotlin_version' via project extra properties or a version catalog if defined

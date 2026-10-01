@@ -58,14 +58,11 @@ import com.lody.virtual.remote.InstalledAppInfo;
 import com.lody.virtual.remote.PendingResultData;
 import com.lody.virtual.remote.VDeviceInfo;
 import com.lody.virtual.server.interfaces.IUiCallback;
-import com.lody.virtual.server.vector.ModuleSettings;
-import com.lody.virtual.server.vector.ModuleStore;
-import com.lody.virtual.server.vector.VectorManagerService;
-import com.lody.virtual.server.vector.VectorManagerServiceImpl;
+import org.matrix.vector.service.ModuleSettings;
+import org.matrix.vector.service.ModuleStore;
+import org.matrix.vector.service.VectorManagerService;
 import com.virtualxposed.log.client.LogMessage;
 import com.virtualxposed.log.client.VLoggingClient;
-
-import org.matrix.vector.ipc.ScopeEntry;
 
 import java.io.File;
 import java.lang.reflect.Field;

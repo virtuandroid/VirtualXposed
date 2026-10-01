@@ -1,4 +1,4 @@
-package com.lody.virtual.server.vector
+package org.matrix.vector.service
 
 import android.annotation.SuppressLint
 import kotlinx.serialization.Serializable

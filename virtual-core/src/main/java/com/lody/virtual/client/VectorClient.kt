@@ -3,7 +3,7 @@ package com.lody.virtual.client
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.IBinder
-import com.lody.virtual.server.vector.VectorManagerService
+import org.matrix.vector.service.VectorManagerService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

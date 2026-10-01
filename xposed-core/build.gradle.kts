@@ -48,7 +48,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":log-client"))
+    implementation(project(":shared-helper"))
 
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.core:core-ktx:1.10.1")
