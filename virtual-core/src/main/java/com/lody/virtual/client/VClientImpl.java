@@ -58,9 +58,11 @@ import com.lody.virtual.remote.InstalledAppInfo;
 import com.lody.virtual.remote.PendingResultData;
 import com.lody.virtual.remote.VDeviceInfo;
 import com.lody.virtual.server.interfaces.IUiCallback;
+
 import org.matrix.vector.service.ModuleSettings;
 import org.matrix.vector.service.ModuleStore;
 import org.matrix.vector.service.VectorManagerService;
+
 import com.virtualxposed.log.client.LogMessage;
 import com.virtualxposed.log.client.VLoggingClient;
 
@@ -357,6 +359,8 @@ public final class VClientImpl extends IVClient.Stub {
             ExposedBridge.initOnce(context, data.appInfo, originClassLoader);
 
             Set<String> enabledModules = getEnabledModules(packageName);
+            // TODO remove dependency on isXposedEnabled
+            NativeEngine.hookDlOpen();
 
             VectorClient.initVectorManager(context, data.appInfo, originClassLoader);
             List<InstalledAppInfo> installedApps = VirtualCore.get().getInstalledApps(0);
@@ -370,8 +374,6 @@ public final class VClientImpl extends IVClient.Stub {
         } else {
             Timber.w("Xposed is not enabled");
         }
-        // TODO remove dependency on isXposedEnabled
-        NativeEngine.hookDlOpen();
 
         ClassLoader cl = LoadedApk.getClassLoader.call(data.info);
         if (BuildCompat.isS()) {

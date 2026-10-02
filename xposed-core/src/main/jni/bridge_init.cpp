@@ -110,7 +110,6 @@ void install_dlopen_hook() {
 }
 
 void *InlineHooker(void *target, void *hooker) {
-    _make_rwx(target, _page_size);
     void *origin_call;
     if (DobbyHook(target, hooker, &origin_call) == 0) {
         return origin_call;
