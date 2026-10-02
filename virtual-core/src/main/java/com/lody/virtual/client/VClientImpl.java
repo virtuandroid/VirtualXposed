@@ -450,10 +450,16 @@ public final class VClientImpl extends IVClient.Stub {
 
         // Only allow ENABLED modules also matching the app scope
         for (String module : enabledModules) {
+            // If the module is enabled, then always allow loading into itself.
+            if (Objects.equals(module, packageName)) {
+                modulesToLoad.add(packageName);
+                continue;
+            }
+
             ModuleSettings moduleSettings = store.getModuleSettings().get(module);
+
             if (moduleSettings != null) {
                 Set<String> enabledModuleScopes = moduleSettings.getAppScopes();
-
                 for (String enabledModuleScope : enabledModuleScopes) {
                     // TODO handle user ID
                     if (Objects.equals(enabledModuleScope, packageName)) {

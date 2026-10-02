@@ -65,7 +65,6 @@ android {
 }
 
 dependencies {
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
     implementation(project(":virtual-core"))
     implementation(project(":launcher"))
     implementation(project(":xposed-core"))
