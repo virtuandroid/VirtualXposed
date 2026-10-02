@@ -6,6 +6,7 @@
 #include "elf/elf_image.h"
 #include "elf/symbol_cache.h"
 #include "common/logger.h"
+#include "x86/helpers.h"
 #include <cstdio>
 #include <sys/mman.h>
 
@@ -109,13 +110,23 @@ void install_dlopen_hook() {
     }
 }
 
+
 void *InlineHooker(void *target, void *hooker) {
+    _make_rwx(target, _page_size);
     void *origin_call;
-    if (DobbyHook(target, hooker, &origin_call) == 0) {
+#ifdef __x86_64__
+    if (helpers::InstallHook(target, hooker, &origin_call) == RT_SUCCESS) {
         return origin_call;
     } else {
         return nullptr;
     }
+#else
+    if (DobbyHook(target, hooker, &origin_call) == RT_SUCCESS) {
+        return origin_call;
+    } else {
+        return nullptr;
+    }
+#endif
 }
 
 bool InlineUnhooker(void *func) {

@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 add_subdirectory(${PROJECT_ROOT}/external external)
 
-add_library(lsplantbridge SHARED bridge_init.cpp elf/elf_image.cpp elf/symbol_cache.cpp common/config.h)
+add_library(lsplantbridge SHARED bridge_init.cpp x86/helpers.cpp elf/elf_image.cpp elf/symbol_cache.cpp common/config.h)
 set_target_properties(lsplantbridge PROPERTIES CXX_SCAN_FOR_MODULES ON)
 
 set(IGNORED_WARNINGS
