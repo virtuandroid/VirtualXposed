@@ -49,7 +49,6 @@ import io.virtualapp.widgets.NonScrollListView;
  * @date 14/8/24
  */
 public class PermissionManageActivity extends VActivity {
-
     private static final String TAG = PermissionManageActivity.class.getSimpleName();
 
     public static final String EXTRA_APP_NAME =

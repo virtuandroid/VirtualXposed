@@ -37,6 +37,17 @@ data class HookScope(
      */
     val id: String = Uuid.random().toString()
 ) : Parcelable {
+    // TODO Create tests for this
+    fun matchesMethod(member: String): Boolean {
+        return if (scope.endsWith("**")) {
+            member.startsWith(scope.removeSuffix("**"))
+        } else if (scope.endsWith("*")) {
+            member.substringBeforeLast(".") == scope.removeSuffix("*")
+        } else {
+            scope == member
+        }
+    }
+
     companion object {
         const val ACTION_BLOCK = 0
         const val ACTION_ALLOW = 1

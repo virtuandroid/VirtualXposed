@@ -387,7 +387,7 @@ public class TransactionHandlerProxy extends ClientTransactionHandler {
 
     @Override
     public ActivityClientRecord getActivityClient(IBinder token) {
-        Timber.d("getActivityClient: %s", token);
+        // Timber.d("getActivityClient: %s", token);
         return originalHandler.getActivityClient(token);
     }
 

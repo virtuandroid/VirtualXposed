@@ -1,54 +1,28 @@
 package me.weishu.exposed;
 
-import android.annotation.SuppressLint;
-import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
-import android.content.ServiceConnection;
-import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
-import android.os.Build;
-import android.os.IBinder;
-import android.os.Process;
-import android.text.TextUtils;
 import android.util.Base64;
-import android.util.Log;
-import android.util.Pair;
-import android.view.AbsSavedState;
-import android.view.View;
-import android.widget.Toast;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
 
 import dalvik.system.DexClassLoader;
 import de.robv.android.xposed.ExposedHelper;
 import de.robv.android.xposed.IXposedHookInitPackageResources;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.IXposedHookZygoteInit;
-import de.robv.android.xposed.LSPosedBridge;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XSharedPreferences;
 import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import timber.log.Timber;
 
@@ -241,14 +215,14 @@ public class ExposedBridge {
     public static XC_MethodHook.Unhook hookMethod(Member method, XC_MethodHook callback) {
         presetMethod(method);
 
-        final XC_MethodHook.Unhook unhook = LSPosedBridge.INSTANCE.createHook(method, callback);
+        final XC_MethodHook.Unhook unhook = ExposedHelper.createHook(method, callback);
         return ExposedHelper.newUnHook(callback, unhook.getHookedMethod());
     }
 
     public static Object invokeOriginalMethod(Member method, Object thisObject, Object[] args)
-            throws NullPointerException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+            throws NullPointerException, IllegalArgumentException {
 
-        return LSPosedBridge.INSTANCE.invokeOriginalMethod(method, thisObject, args);
+        return ExposedHelper.invokeOriginalMethod(method, thisObject, args);
     }
 
     private static boolean filterApplication(ApplicationInfo applicationInfo) {

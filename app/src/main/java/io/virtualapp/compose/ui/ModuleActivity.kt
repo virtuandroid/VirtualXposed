@@ -789,6 +789,7 @@ private fun AddScopeDialog(
                             Text("Use * for shallow match\nUse ** for deep match")
                         }
                     },
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
                     modifier = Modifier.fillMaxWidth()
                 )
 

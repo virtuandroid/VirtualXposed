@@ -41,6 +41,7 @@ import com.lody.virtual.client.hook.delegate.TaskDescriptionDelegate;
 import com.lody.virtual.client.ipc.LocalProxyUtils;
 import com.lody.virtual.client.ipc.ServiceManagerNative;
 import com.lody.virtual.client.ipc.VActivityManager;
+import com.lody.virtual.client.ipc.VHookClientAttacher;
 import com.lody.virtual.client.ipc.VLoggingClientAttacher;
 import com.lody.virtual.client.ipc.VPackageManager;
 import com.lody.virtual.client.stub.VASettings;
@@ -55,6 +56,7 @@ import com.lody.virtual.server.interfaces.IPackageObserver;
 import com.lody.virtual.server.interfaces.IUiCallback;
 import com.lody.virtual.server.mediastore.VMediaProvider;
 import com.lody.virtual.server.permission.VPermissionManager;
+import com.virtualxposed.hook.VHookClient;
 import com.virtualxposed.log.client.VLoggingClient;
 
 import java.io.IOException;
@@ -215,6 +217,7 @@ public final class VirtualCore {
             VMediaProvider.get();
             // Attach to the logging client
             VLoggingClient.get().attach(new VLoggingClientAttacher());
+            VHookClient.get().attach(new VHookClientAttacher());
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {

@@ -1,6 +1,7 @@
 package com.lody.virtual.client;
 
 import static com.lody.virtual.os.VUserHandle.getUserId;
+import static com.lody.virtual.os.VUserHandle.myUserId;
 
 import android.annotation.SuppressLint;
 import android.app.Application;
@@ -12,6 +13,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.os.Binder;
@@ -63,6 +65,7 @@ import org.matrix.vector.service.ModuleSettings;
 import org.matrix.vector.service.ModuleStore;
 import org.matrix.vector.service.VectorManagerService;
 
+import com.virtualxposed.hook.VHookClient;
 import com.virtualxposed.log.client.LogMessage;
 import com.virtualxposed.log.client.VLoggingClient;
 
@@ -367,6 +370,8 @@ public final class VClientImpl extends IVClient.Stub {
 
             for (InstalledAppInfo app : installedApps) {
                 if (enabledModules.contains(app.packageName)) {
+                    PackageInfo packageInfo = app.getPackageInfo(myUserId());
+                    VHookClient.get().registerLoadedModule(packageInfo);
                     ExposedBridge.loadModule(app.apkPath, app.getOdexFile().getParent(), app.libPath,
                             data.appInfo, originClassLoader);
                 }

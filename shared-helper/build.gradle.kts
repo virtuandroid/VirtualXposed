@@ -35,4 +35,5 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.8.0")
+    implementation("dev.rikka.rikkax.parcelablelist:parcelablelist:2.0.1")
 }

@@ -18,6 +18,7 @@ import com.lody.virtual.server.accounts.VAccountManagerService;
 import com.lody.virtual.server.am.BroadcastSystem;
 import com.lody.virtual.server.am.VActivityManagerService;
 import com.lody.virtual.server.device.VDeviceManagerService;
+import com.lody.virtual.server.hook.VHookManagerService;
 import com.lody.virtual.server.interfaces.IServiceFetcher;
 import com.lody.virtual.server.job.VJobSchedulerService;
 import com.lody.virtual.server.location.VirtualLocationService;
@@ -62,6 +63,9 @@ public final class BinderProvider extends ContentProvider {
         addService(ServiceManagerNative.DEVICE, VDeviceManagerService.get());
         addService(ServiceManagerNative.VIRTUAL_LOC, VirtualLocationService.get());
         addService(ServiceManagerNative.VIRTUAL_LOG, VLoggingManagerService.get());
+
+        VHookManagerService.get().start();
+        addService(ServiceManagerNative.VIRTUAL_HOOK, VHookManagerService.get());
 
         return true;
     }

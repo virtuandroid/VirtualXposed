@@ -527,7 +527,7 @@ HOOK_DEF(void*, dlsym, void *handle, char *symbol) {
 
 // int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 HOOK_DEF(int, connect, int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
-    ALOGD(">>>>> connect >>> fd: %d.", sockfd);
+    // ALOGD(">>>>> connect >>> fd: %d.", sockfd);
 
     struct ucred creds;
     socklen_t len = sizeof(creds);

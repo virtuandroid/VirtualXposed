@@ -57,6 +57,7 @@ static uint32_t GetInstructionLength(const uint8_t *code) {
     return len + 2;
 }
 
+// TODO replace this function or dobby as a whole
 /**
  * Terrible replacement for Dobby on x86_64.
  * Dobby (probably) overwrites instructions due to variable

@@ -31,6 +31,7 @@ public class ServiceManagerNative {
     private static final String TAG = ServiceManagerNative.class.getSimpleName();
     public static String SERVICE_CP_AUTH = "virtual.service.BinderProvider";
     public static final String VIRTUAL_LOG = "virtual-log";
+    public static final String VIRTUAL_HOOK = "virtual-hook";
 
     private static IServiceFetcher sFetcher;
 
