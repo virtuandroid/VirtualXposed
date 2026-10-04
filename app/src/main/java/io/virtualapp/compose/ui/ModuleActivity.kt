@@ -505,7 +505,7 @@ private fun HookScopesSection(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Restrict module package hooking. By default all hooks are allowed.",
+                        text = "Restrict module package hooking. By default no hooks are allowed.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -540,6 +540,14 @@ private fun HookScopesSection(
                 }
             } else {
                 Column {
+                    Button(onClick = {
+                        onIntent.invoke(MainIntent.OnModuleScope(emptyList(), moduleInfo))
+                    }, modifier = Modifier.fillMaxSize()) {
+                        Text(text = "Clear all hook scopes")
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     LookaheadScope {
                         scopes.forEachIndexed { index, scope ->
                             key(scope.id) {

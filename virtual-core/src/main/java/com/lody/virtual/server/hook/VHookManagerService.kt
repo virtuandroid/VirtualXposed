@@ -43,6 +43,7 @@ object VHookManagerService : IVHookService.Stub() {
 
         // Reject any invalid calls
         if (modulePackage == null || method == null) {
+            Timber.w("Missing module package or method! Rejecting hook!")
             return DENIED
         }
 
@@ -65,6 +66,7 @@ object VHookManagerService : IVHookService.Stub() {
 
                 val callback: (Int?) -> Unit = {
                     result.complete(it ?: DEFAULT_ACTION)
+                    // When popup is closed reopen the app
                     val launchIntent = VirtualCore.get().getLaunchIntent(callingPackage, 0)
                     VActivityManager.get().startActivity(launchIntent, 0)
                 }
@@ -82,12 +84,12 @@ object VHookManagerService : IVHookService.Stub() {
 
                 try {
                     runBlocking {
-                        withTimeout(30.seconds) {
+                        withTimeout(60.seconds) {
                             result.await()
                         }
                     }
                 } catch (_: TimeoutCancellationException) {
-                    Timber.i("Response within 30 seconds, defaulting to blocking hook: $method")
+                    Timber.i("Response within 60 seconds, defaulting to blocking hook: $method")
                     return DEFAULT_ACTION
                 }
 

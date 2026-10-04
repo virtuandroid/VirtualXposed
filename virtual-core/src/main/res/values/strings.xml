@@ -10,6 +10,7 @@
     <string name="create_shortcut_already_exist">The shortcut already exists</string>
     <string name="permission_manage_allow">Allow</string>
     <string name="permission_manage_allow_and_restart">Allow and restart</string>
+    <string name="permission_manage_allow_all_class">Allow all class methods</string>
     <string name="permission_manage_allow_all">Allow all</string>
     <string name="permission_manage_allow_all_time">Allow all the time</string>
     <string name="permission_manage_change_to_precise">Change to precise location</string>

@@ -89,7 +89,7 @@ class GrantHookScopesActivity : Activity() {
         val icon = dialog.findViewById<View?>(R.id.dialog_permission_icon) as ImageView
         val messageView = dialog.findViewById<View?>(R.id.dialog_message) as TextView
         val allowButton = dialog.findViewById<View?>(R.id.dialog_button_allow) as Button
-        val allowAndRestartButton =
+        val allowPackageButton =
             dialog.findViewById<View?>(R.id.dialog_button_only_once) as Button
         val doNotAllowButton = dialog.findViewById<View?>(R.id.dialog_button_do_not_allow) as Button
 
@@ -104,13 +104,11 @@ class GrantHookScopesActivity : Activity() {
 
         messageView.text = Html.fromHtml(message)
         allowButton.text = getString(R.string.permission_manage_allow)
-        allowAndRestartButton.text = getString(R.string.permission_manage_allow_and_restart)
+        allowPackageButton.text = getString(R.string.permission_manage_allow_all_class)
 
-        // This feels too clunky as a user when multiple hooks are created
-        allowAndRestartButton.isGone = true
         doNotAllowButton.text = getString(R.string.permission_manage_do_not_allow)
 
-        fun getHookScope(action: Int): HookScope {
+        fun getHookScope(target: String, action: Int): HookScope {
             return HookScope(
                 action,
                 target,
@@ -124,24 +122,19 @@ class GrantHookScopesActivity : Activity() {
             val binder = VectorManagerService.getManagerServer() ?: return@setOnClickListener
             val scopes = binder.getHookScopes(caller)
 
-            scopes.add(getHookScope(HookScope.ACTION_ALLOW))
+            scopes.add(getHookScope(target, HookScope.ACTION_ALLOW))
             binder.setHookScopes(caller, scopes.reindexScopes())
 
             dialog.dismiss()
             setResultAndFinish(RESULT_OK, ticket, IVHookService.ALLOWED)
         }
 
-        allowAndRestartButton.setOnClickListener {
+        allowPackageButton.setOnClickListener {
             val binder = VectorManagerService.getManagerServer() ?: return@setOnClickListener
             val scopes = binder.getHookScopes(caller)
 
-            scopes.add(getHookScope(HookScope.ACTION_ALLOW))
+            scopes.add(getHookScope(target.substringBeforeLast(".") + ".*", HookScope.ACTION_ALLOW))
             binder.setHookScopes(caller, scopes.reindexScopes())
-
-            // TODO use userId
-            VirtualCore.get().killApp(app, 0)
-            val intent = VirtualCore.get().getLaunchIntent(app, 0)
-            startActivity(intent)
 
             dialog.dismiss()
             setResultAndFinish(RESULT_OK, ticket, IVHookService.ALLOWED)
@@ -151,7 +144,7 @@ class GrantHookScopesActivity : Activity() {
             val binder = VectorManagerService.getManagerServer() ?: return@setOnClickListener
             val scopes = binder.getHookScopes(caller)
 
-            scopes.add(getHookScope(HookScope.ACTION_BLOCK))
+            scopes.add(getHookScope(target, HookScope.ACTION_BLOCK))
             binder.setHookScopes(caller, scopes.reindexScopes())
 
             dialog.dismiss()

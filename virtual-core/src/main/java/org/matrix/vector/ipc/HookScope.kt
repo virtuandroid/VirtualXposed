@@ -39,10 +39,10 @@ data class HookScope(
 ) : Parcelable {
     // TODO Create tests for this
     fun matchesMethod(member: String): Boolean {
-        return if (scope.endsWith("**")) {
+        return if (scope.endsWith(".**")) {
             member.startsWith(scope.removeSuffix("**"))
-        } else if (scope.endsWith("*")) {
-            member.substringBeforeLast(".") == scope.removeSuffix("*")
+        } else if (scope.endsWith(".*")) {
+            member.substringBeforeLast(".") == scope.removeSuffix(".*")
         } else {
             scope == member
         }
