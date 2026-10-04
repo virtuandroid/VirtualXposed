@@ -51,5 +51,18 @@ data class HookScope(
     companion object {
         const val ACTION_BLOCK = 0
         const val ACTION_ALLOW = 1
+
+        /**
+         * Return a new list with priorities based on the order of the list
+         */
+        fun List<HookScope>.reindexScopes(): List<HookScope> {
+            return this.mapIndexed { idx, scope -> scope.copy(priority = idx) }
+        }
+
+        fun List<HookScope>.sortedStable(): List<HookScope> {
+            return this.sortedWith(
+                compareBy<HookScope> { it.priority }.thenBy { it.id }
+            )
+        }
     }
 }

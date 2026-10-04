@@ -85,12 +85,6 @@ object ExposedHelper {
         return hookManager.getOriginalMethod(method)?.invoke(thisObject, *args)
     }
 
-
-
-
-
-
-
     @Suppress("NOTHING_TO_INLINE")
     // We want this inlined to prevent security bypasses with reflection.
     private inline fun hookMember(target: Member, callback: XC_MethodHook): XC_MethodHook.Unhook {

@@ -9,6 +9,7 @@
     <string name="add_account_button_label">Add account</string>
     <string name="create_shortcut_already_exist">The shortcut already exists</string>
     <string name="permission_manage_allow">Allow</string>
+    <string name="permission_manage_allow_and_restart">Allow and restart</string>
     <string name="permission_manage_allow_all">Allow all</string>
     <string name="permission_manage_allow_all_time">Allow all the time</string>
     <string name="permission_manage_change_to_precise">Change to precise location</string>
@@ -19,6 +20,10 @@
     <string name="permission_request_dialog_message">
         <![CDATA[Allow <b>%1$s</b> to use <b>%2$s</b> permission?]]>
     </string>
+    <string name="permission_request_hook_message">
+        <![CDATA[Allow <b>%1$s</b> to hook <b>%2$s</b>?]]>
+    </string>
+
     <string name="permission_group_request_dialog_message">
         <![CDATA[Allow <b>%1$s</b> to %2$s?]]>
     </string>

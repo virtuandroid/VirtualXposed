@@ -33,7 +33,10 @@ import java.io.File
 import kotlin.collections.get
 import kotlin.time.Duration.Companion.milliseconds
 
-class VectorManagerServiceImpl(val backingFile: File) : IManagerService.Stub() {
+abstract class IVectorManagerService : IManagerService.Stub() {
+}
+
+class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     fun start() {

@@ -11,12 +11,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.matrix.vector.service.VectorManagerService
 import org.matrix.vector.ipc.HookScope
+import org.matrix.vector.ipc.HookScope.Companion.sortedStable
+import org.matrix.vector.ipc.HookScope.Companion.reindexScopes
 import org.matrix.vector.ipc.IManagerService
 import timber.log.Timber
 import android.graphics.drawable.Drawable
+import com.virtualxposed.hook.VHookClient
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import org.matrix.vector.service.IVectorManagerService
 
 data class ModuleScreenState(
     val modules: PersistentList<ModuleInfo> = persistentListOf(),
@@ -52,19 +56,6 @@ data class ModuleInfo(
 
 class ModuleViewModel : ViewModel() {
     companion object {
-        /**
-         * Return a new list with priorities based on the order of the list
-         */
-        fun List<HookScope>.reindexScopes(): List<HookScope> {
-            return this.mapIndexed { idx, scope -> scope.copy(priority = idx) }
-        }
-
-        fun List<HookScope>.sortedStable(): List<HookScope> {
-            return this.sortedWith(
-                compareBy<HookScope> { it.priority }.thenBy { it.id }
-            )
-        }
-
         private fun List<ModuleInfo>.sortedModules(): List<ModuleInfo> {
             return this.sortedWith(compareBy<ModuleInfo> {
                 !it.isEnabled
@@ -240,10 +231,12 @@ class ModuleViewModel : ViewModel() {
 
     fun loadData(packageManger: PackageManager) {
         viewModelScope.launch {
-            val binder =
-                VectorManagerService.getService().also { this@ModuleViewModel.binder = it }
+            val binder = VHookClient.getVectorManager() ?: return@launch
+            val manager = IManagerService.Stub.asInterface(binder).also {
+                this@ModuleViewModel.binder = it
+            }
 
-            val packages = binder.getInstalledPackagesFromAllUsers(
+            val packages = manager.getInstalledPackagesFromAllUsers(
                 PackageManager.GET_META_DATA,
                 false
             ).list.filterNotNull()

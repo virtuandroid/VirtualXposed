@@ -29,6 +29,8 @@ import com.lody.virtual.server.pm.VPackageManagerService;
 import com.lody.virtual.server.pm.VUserManagerService;
 import com.lody.virtual.server.vs.VirtualStorageService;
 
+import org.matrix.vector.service.VectorManagerService;
+
 /**
  * @author Lody
  */
@@ -64,7 +66,7 @@ public final class BinderProvider extends ContentProvider {
         addService(ServiceManagerNative.VIRTUAL_LOC, VirtualLocationService.get());
         addService(ServiceManagerNative.VIRTUAL_LOG, VLoggingManagerService.get());
 
-        VHookManagerService.get().start();
+        new VectorManagerService().start();
         addService(ServiceManagerNative.VIRTUAL_HOOK, VHookManagerService.get());
 
         return true;

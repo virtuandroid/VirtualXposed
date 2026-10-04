@@ -93,8 +93,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
-import io.virtualapp.compose.ui.ModuleViewModel.Companion.reindexScopes
 import org.matrix.vector.ipc.HookScope
+import org.matrix.vector.ipc.HookScope.Companion.reindexScopes
 
 class ModuleActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
