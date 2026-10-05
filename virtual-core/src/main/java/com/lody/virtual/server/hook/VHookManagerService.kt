@@ -114,6 +114,16 @@ object VHookManagerService : IVHookService.Stub() {
         }
     }
 
+    override fun isMethodRewriteAllowed(
+        method: String?,
+        modulePackage: String?
+    ): Boolean {
+        if (modulePackage == null) {
+            return false
+        }
+        return vectorManager?.methodRewriteAllowed?.contains(modulePackage) == true
+    }
+
     override fun getVectorManager(): IBinder? {
         // Return the binder only if the caller is the vector app or the system app (:app project)
         // The vector manager can execute privileged actions and should therefore not be accessible normal guest apps.

@@ -150,6 +150,26 @@ object VLoggingManagerService : IVLoggingService.Stub() {
             }
         }
 
+        if (logMessageHolder.dangerous) {
+            when (logMessage) {
+                is LogMessage.HookArgumentsRewrite, is LogMessage.HookReturnRewrite, is LogMessage.HookExceptionMismatch -> {
+                    val pkg = logMessageHolder.packageName
+                    val userId = logMessageHolder.userId
+
+                    VActivityManager.get().killAppByPkg(pkg, userId)
+                    CoroutineScope(Dispatchers.Main).launch {
+                        Toast.makeText(
+                            VirtualCore.get().context,
+                            "App killed due to disallowed return value rewriting!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+
+                else -> {}
+            }
+        }
+
         runCatching {
             Timber.i("Received log message: ${logMessageHolder.toPrettyJson()}")
         }.onFailure {

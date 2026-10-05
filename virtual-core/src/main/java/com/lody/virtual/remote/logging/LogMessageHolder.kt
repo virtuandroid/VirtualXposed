@@ -14,6 +14,10 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.ClassDiscriminatorMode
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
+import org.matrix.vector.service.VectorManagerService
 
 /**
  * This class wraps over the log message to provide additional metadata about the log message.
@@ -35,7 +39,8 @@ class LogMessageHolder private constructor(
         private var pid: Int = VBinder.getCallingPid()
         private var userId: Int = VBinder.getCallingUserHandle().identifier
 
-        private var packageName: String? = VPackageManagerService.get().getNameForUid(VBinder.getCallingUid())
+        private var packageName: String? =
+            VPackageManagerService.get().getNameForUid(VBinder.getCallingUid())
         private var timestamp: Long = System.currentTimeMillis()
 
         fun setPid(pid: Int): Builder {
@@ -150,6 +155,12 @@ class LogMessageHolder private constructor(
                     (processName != null) && (pkgName != null) && !processName.startsWith(pkgName)
                 }
 
+                is LogMessage.HookArgumentsRewrite, is LogMessage.HookReturnRewrite, is LogMessage.HookExceptionMismatch -> {
+                    VectorManagerService.get().getManagerServer()?.methodRewriteAllowed?.contains(
+                        logMessage.modulePackage
+                    ) != true
+                }
+
                 // Very few apps need to run shell commands.
                 // Assume they are dangerous by default.
                 is LogMessage.Exec -> {
@@ -170,6 +181,13 @@ class LogMessageHolder private constructor(
             classDiscriminatorMode = ClassDiscriminatorMode.NONE
             encodeDefaults = true
             explicitNulls = false
+            serializersModule = SerializersModule {
+                polymorphic(LogMessage::class) {
+                    subclass(LogMessage.HookReturnRewrite::class)
+                    subclass(LogMessage.HookArgumentsRewrite::class)
+                    subclass(LogMessage.HookExceptionMismatch::class)
+                }
+            }
         }
     }
 

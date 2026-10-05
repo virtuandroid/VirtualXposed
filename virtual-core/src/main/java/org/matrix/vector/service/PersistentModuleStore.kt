@@ -21,6 +21,7 @@ data class ModuleStore(
 @Serializable
 // Simple extensible data storage for module settings
 data class ModuleSettings(
+    val methodRewriteAllowed: Boolean,
     val guestVirtualizationAllowed: Boolean,
     val appScopes: Set<PackageID>,
     val hookScopes: List<HookScope>

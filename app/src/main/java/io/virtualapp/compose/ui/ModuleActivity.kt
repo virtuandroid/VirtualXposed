@@ -329,7 +329,47 @@ private fun XposedDetailScreen(
                 Switch(
                     checked = isEnabled, onCheckedChange = { checked ->
                         onIntent.invoke(MainIntent.OnModuleEnable(enabled = checked, moduleInfo))
-                    })
+                    }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Return value rewriting",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Return value rewriting makes it possible to suppress function calls, or to alter execution. " +
+                                "When disabled the app will be killed if a module rewrites method arguments or the return value. " +
+                                "This also prevents exception suppression. " +
+                                "Note that this toggle can be bypasses by sophisticated attackers. ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = moduleInfo.rewriteMethods,
+                    onCheckedChange = { checked ->
+                        onIntent.invoke(MainIntent.OnModuleRewriteSetting(checked, moduleInfo))
+                    }
+                )
             }
         }
 

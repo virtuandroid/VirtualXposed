@@ -17,9 +17,9 @@ import java.lang.reflect.Member
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @JsonClassDiscriminator("type")
-sealed class LogMessage(
-    val logType: LogType,
-) : Parcelable {
+sealed class LogMessage : Parcelable {
+
+    abstract val logType: LogType
     override fun writeToParcel(parcel: Parcel, flags: Int) {
         parcel.writeParcelable(logType, 0)
     }
@@ -51,7 +51,7 @@ sealed class LogMessage(
                         LogType.GetProvider -> GetProvider(parcel)
                         LogType.Exec -> Exec(parcel)
                         LogType.AppInstall -> AppInstall(parcel)
-                        LogType.AppUninstall -> AppInstall(parcel)
+                        LogType.AppUninstall -> AppUninstall(parcel)
                         LogType.UsePermission -> UsePermission(parcel)
                         LogType.SocketConnect -> SocketConnect(parcel)
                         LogType.FingerprintChange -> FingerprintChange(parcel)
@@ -80,7 +80,9 @@ sealed class LogMessage(
         val targetType: String,
         val targetClass: String,
         val modulePackage: String,
-    ) : LogMessage(LogType.HookAttach) {
+    ) : LogMessage() {
+        override val logType = LogType.HookAttach
+
         constructor(parcel: Parcel) : this(
             parcel.readString()!!,
             parcel.readString()!!,
@@ -102,7 +104,9 @@ sealed class LogMessage(
     data class HookExecution(
         val method: String,
         val modulePackage: String,
-    ) : LogMessage(LogType.HookExecution) {
+    ) : LogMessage() {
+        override val logType = LogType.HookExecution
+
         constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
         constructor(method: Member, caller: String) : this(method.toPrettyString(), caller)
 
@@ -115,9 +119,10 @@ sealed class LogMessage(
 
     @Serializable
     data class HookArgumentsRewrite(
-        val method: String,
-        val modulePackage: String,
-    ) : LogMessage(LogType.HookArgumentsRewrite) {
+        override val method: String,
+        override val modulePackage: String,
+    ) : HookRewrite(LogType.HookArgumentsRewrite) {
+
         constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
         constructor(method: Member, caller: String) : this(method.toPrettyString(), caller)
 
@@ -129,10 +134,17 @@ sealed class LogMessage(
     }
 
     @Serializable
-    data class HookReturnRewrite(
-        val method: String,
-        val modulePackage: String,
-    ) : LogMessage(LogType.HookReturnRewrite) {
+    abstract class HookRewrite(override val logType: LogType) : LogMessage() {
+        abstract val method: String
+        abstract val modulePackage: String
+    }
+
+    @Serializable
+    class HookReturnRewrite(
+        override val method: String,
+        override val modulePackage: String,
+    ) : HookRewrite(LogType.HookReturnRewrite) {
+
         constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
         constructor(method: Member, caller: String) : this(method.toPrettyString(), caller)
 
@@ -145,10 +157,11 @@ sealed class LogMessage(
 
     @Serializable
     data class HookExceptionMismatch(
-        val method: String,
-    ) : LogMessage(LogType.HookExceptionMismatch) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!)
-        constructor(method: Member) : this(method.toPrettyString())
+        override val method: String,
+        override val modulePackage: String,
+    ) : HookRewrite(LogType.HookExceptionMismatch) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
+        constructor(method: Member, caller: String) : this(method.toPrettyString(), caller)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
@@ -161,7 +174,9 @@ sealed class LogMessage(
     data class FileAccess(
         val path: String,
         val forbidden: Boolean
-    ) : LogMessage(LogType.FileAccess) {
+    ) : LogMessage() {
+        override val logType = LogType.FileAccess
+
         constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readInt() == 1)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -173,11 +188,15 @@ sealed class LogMessage(
 
     @SuppressLint("UnsafeOptInUsageError")
     @Serializable
-    class AppLoad : LogMessage(LogType.AppLoad)
+    class AppLoad : LogMessage() {
+        override val logType = LogType.AppLoad
+    }
 
 
     @Serializable
-    class AppKill(val pid: Int, val processName: String?) : LogMessage(LogType.AppKill) {
+    class AppKill(val pid: Int, val processName: String?) : LogMessage() {
+        override val logType = LogType.AppKill
+
         constructor(parcel: Parcel) : this(parcel.readInt(), parcel.readString())
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -188,13 +207,18 @@ sealed class LogMessage(
     }
 
     @Serializable
-    class AppDeath : LogMessage(LogType.AppDeath)
+    class AppDeath : LogMessage() {
+        override val logType = LogType.AppDeath
+
+    }
 
     @SuppressLint("UnsafeOptInUsageError")
     @Serializable
     data class ModuleLoad(
         val path: String
-    ) : LogMessage(LogType.ModuleLoad) {
+    ) : LogMessage() {
+        override val logType = LogType.ModuleLoad
+
         constructor(parcel: Parcel) : this(parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -209,7 +233,10 @@ sealed class LogMessage(
         // This could be a real Intent, but that makes JSON serialization tricky
         val action: String,
         val destinationPackage: String?,
-    ) : LogMessage(LogType.BroadcastReceived) {
+    ) : LogMessage() {
+        override val logType = LogType.BroadcastReceived
+
+
         constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -233,7 +260,9 @@ sealed class LogMessage(
         // This could be a real Intent, but that makes JSON serialization tricky
         val path: String,
         val codeLoadMethod: CodeLoadMethod
-    ) : LogMessage(LogType.CodeLoad) {
+    ) : LogMessage() {
+        override val logType = LogType.CodeLoad
+
         constructor(parcel: Parcel) : this(
             parcel.readString()!!,
             parcel.readParcelable<CodeLoadMethod>(CodeLoadMethod::class.java.classLoader)!!
@@ -250,7 +279,9 @@ sealed class LogMessage(
     @Serializable
     data class Exec(
         val path: String,
-    ) : LogMessage(LogType.Exec) {
+    ) : LogMessage() {
+        override val logType = LogType.Exec
+
         constructor(parcel: Parcel) : this(parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -264,7 +295,9 @@ sealed class LogMessage(
         val packageName: String,
         val componentName: String,
         val isExported: Boolean,
-    ) : LogMessage(LogType.BindService) {
+    ) : LogMessage() {
+        override val logType = LogType.BindService
+
         constructor(parcel: Parcel) : this(
             parcel.readString()!!,
             parcel.readString()!!,
@@ -285,7 +318,9 @@ sealed class LogMessage(
         val packageName: String,
         val componentName: String,
         val isExported: Boolean,
-    ) : LogMessage(LogType.GetService) {
+    ) : LogMessage() {
+        override val logType = LogType.GetService
+
         constructor(parcel: Parcel) : this(
             parcel.readString()!!,
             parcel.readString()!!,
@@ -305,7 +340,10 @@ sealed class LogMessage(
         val packageName: String,
         val componentName: String,
         val isExported: Boolean,
-    ) : LogMessage(LogType.GetProvider) {
+    ) : LogMessage() {
+        override val logType = LogType.GetProvider
+
+
         constructor(parcel: Parcel) : this(
             parcel.readString()!!,
             parcel.readString()!!,
@@ -324,7 +362,9 @@ sealed class LogMessage(
     @Serializable
     data class AppInstall(
         val packageName: String,
-    ) : LogMessage(LogType.AppInstall) {
+    ) : LogMessage() {
+        override val logType = LogType.AppInstall
+
         constructor(parcel: Parcel) : this(parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -336,7 +376,9 @@ sealed class LogMessage(
     @Serializable
     data class AppUninstall(
         val packageName: String,
-    ) : LogMessage(LogType.AppUninstall) {
+    ) : LogMessage() {
+        override val logType = LogType.AppUninstall
+
         constructor(parcel: Parcel) : this(parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -349,7 +391,9 @@ sealed class LogMessage(
     @Serializable
     data class UsePermission(
         val permission: String,
-    ) : LogMessage(LogType.UsePermission) {
+    ) : LogMessage() {
+        override val logType = LogType.UsePermission
+
         constructor(parcel: Parcel) : this(parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -364,7 +408,9 @@ sealed class LogMessage(
         val fd: Int,
         val peerPid: Int?,
         val peerProcessName: String?,
-    ) : LogMessage(LogType.SocketConnect) {
+    ) : LogMessage() {
+        override val logType = LogType.SocketConnect
+
         constructor(parcel: Parcel) : this(parcel.readInt(), parcel.readInt(), parcel.readString())
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -379,7 +425,9 @@ sealed class LogMessage(
     @Serializable
     data class FingerprintChange(
         val changedFields: List<String>,
-    ) : LogMessage(LogType.FingerprintChange) {
+    ) : LogMessage() {
+        override val logType = LogType.FingerprintChange
+
         constructor(parcel: Parcel) : this(mutableListOf<String>().also { parcel.readStringList(it) })
         constructor(changedFields: Set<String>) : this(changedFields.toList())
 
@@ -394,7 +442,9 @@ sealed class LogMessage(
     data class FileIdentical(
         val originalFilePath: String,
         val fileCopyPath: String,
-    ) : LogMessage(LogType.FileIdentical) {
+    ) : LogMessage() {
+        override val logType = LogType.FileIdentical
+
         constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {

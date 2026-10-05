@@ -11,10 +11,12 @@ import rikka.parcelablelist.ParcelableListSlice;
 * offloaded to the server process.
 */
 interface IVHookService {
+    // Int to allow for more granular settings in the future
     int isHookAllowed(String method, String modulePackage);
     const int ALLOWED = 1;
     const int DENIED = 0;
 
+    boolean isMethodRewriteAllowed(String method, String modulePackage);
     /**
     * Get the Vector manager service binder. Since the vector manager allows the client to
     * call privleged methods this will only return a binder if the caller process package

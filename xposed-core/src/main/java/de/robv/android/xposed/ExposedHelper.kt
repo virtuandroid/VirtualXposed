@@ -3,6 +3,7 @@ package de.robv.android.xposed
 import de.robv.android.xposed.XC_MethodHook.MethodHookParam
 import java.lang.reflect.Member
 import androidx.tracing.trace
+import com.virtualxposed.hook.VHookClient
 import com.virtualxposed.log.client.LogMessage
 import com.virtualxposed.log.client.VLoggingClient
 import com.virtualxposed.lsplantbridge.HookManager
@@ -113,6 +114,8 @@ object ExposedHelper {
         target: Member,
         callback: XC_MethodHook
     ): XC_MethodHook.Unhook {
+        val isRewriteAllowed = VHookClient.isMethodRewriteAllowed(target, modulePackage)
+
         val hooker = hookManager.hook(target) { oldMethod, args ->
             // TODO Checks for:
             // - Abstract classes
@@ -140,7 +143,8 @@ object ExposedHelper {
             params.args = actualArgs
             params.method = oldMethod
             params.thisObject = thisObject
-            var hasRealThrowable = false
+            var realThrowable: Throwable? = null
+            var realThrowableHash: Int? = null
             val cachedArguments = params.args.map { it to it?.hashCode() }
 
             runCatching {
@@ -150,13 +154,21 @@ object ExposedHelper {
                 params.throwable = throwable
             }
 
-            if (params.returnEarly) {
+            // Only return early if the method is allowed to be rewritten
+            if (params.returnEarly && isRewriteAllowed) {
                 VLoggingClient.get().log(
                     LogMessage.HookReturnRewrite(target, modulePackage)
                 )
 
                 isHooked.set(false)
                 return@hook params.result
+            }
+
+            // If argument rewriting is disallowed then try to restore arguments before
+            // the real function call.
+            if (!isRewriteAllowed) {
+                params.args = cachedArguments.map { it.first }.toTypedArray()
+                params.throwable = null
             }
 
             val newArguments = params.args.map { it to it?.hashCode() }
@@ -181,7 +193,7 @@ object ExposedHelper {
             }
 
             try {
-                val realResult = oldMethod.invoke(thisObject, *actualArgs)
+                val realResult = oldMethod.invoke(thisObject, *params.args)
                 params.result = if (oldMethod.returnType == Void.TYPE) {
                     Unit
                 } else {
@@ -189,7 +201,8 @@ object ExposedHelper {
                 }
             } catch (t: Throwable) {
                 Timber.e(t)
-                hasRealThrowable = true
+                realThrowable = t
+                realThrowableHash = t.hashCode()
                 params.throwable = t
             }
 
@@ -204,6 +217,15 @@ object ExposedHelper {
                 }
             }
 
+            // Same as arguments, restore the original result if rewrite is not allowed
+            if (!isRewriteAllowed) {
+                if (realThrowable != null) {
+                    params.throwable = realThrowable
+                } else {
+                    params.result = cachedResult
+                }
+            }
+
             // If the reference or hash is changed.
             // ----
             // This is not a conclusive assessment, but there is no good way to
@@ -215,12 +237,12 @@ object ExposedHelper {
             }
 
             // Throwable mismatch, inserted or removed a throwable
-            val hasCurrentThrowable = params.throwable != null
-            if (hasRealThrowable != hasCurrentThrowable) {
-                VLoggingClient.get().log(LogMessage.HookExceptionMismatch(target))
+            val currentThrowable = params.throwable
+            if (currentThrowable !== realThrowable || realThrowableHash != currentThrowable?.hashCode()) {
+                VLoggingClient.get().log(LogMessage.HookExceptionMismatch(target, modulePackage))
             }
 
-            val finalResult = if (hasCurrentThrowable) {
+            val finalResult = if (params.throwable != null) {
                 throw params.throwable
             } else {
                 params.result

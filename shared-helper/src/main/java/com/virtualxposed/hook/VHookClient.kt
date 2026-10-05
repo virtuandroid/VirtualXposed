@@ -63,6 +63,27 @@ object VHookClient {
         return false
     }
 
+
+    @Synchronized
+    fun isMethodRewriteAllowed(target: Member, modulePackage: String): Boolean {
+        val attacher = this.attacher
+
+        if (attacher == null) {
+            Timber.e("VHookAttacher is not yet initialized. Hook denied!")
+            return false
+        }
+
+        val fullMethod = target.toPrettyString()
+
+        try {
+            return attacher.getInterface()?.isMethodRewriteAllowed(fullMethod, modulePackage) == true
+        } catch (e: RemoteException) {
+            Timber.e(e)
+        }
+
+        return false
+    }
+
     @JvmStatic
     fun get(): VHookClient {
         return this
