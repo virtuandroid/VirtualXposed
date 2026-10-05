@@ -45,10 +45,8 @@ class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() 
         _enabledModules.value = store.enabledModules.toSet()
         _moduleAppScopes.value = store.moduleSettings.map { it.key to it.value.appScopes }.toMap()
         _hookScopes.value = store.moduleSettings.map { it.key to it.value.hookScopes }.toMap()
-        _methodRewrites.value =
-            store.moduleSettings.map { it.key to it.value.methodRewriteAllowed }.toMap()
         _guestAccess.value =
-            store.moduleSettings.map { it.key to it.value.methodRewriteAllowed }.toMap()
+            store.moduleSettings.map { it.key to it.value.guestVirtualizationAllowed }.toMap()
         setupStoreJob()
     }
 
@@ -58,15 +56,13 @@ class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() 
             _enabledModules,
             _moduleAppScopes,
             _hookScopes,
-            _methodRewrites,
             _guestAccess
-        ) { enabled, appScopes, hookScopes, rewritesAllowed, guestAccessAllowed ->
+        ) { enabled, appScopes, hookScopes, guestAccessAllowed ->
             val packages =
-                enabled + appScopes.keys + hookScopes.keys + rewritesAllowed.keys + guestAccessAllowed.keys
+                enabled + appScopes.keys + hookScopes.keys + guestAccessAllowed.keys
 
             val settings = packages.associateWith { pkg ->
                 ModuleSettings(
-                    methodRewriteAllowed = rewritesAllowed[pkg] ?: true,
                     guestVirtualizationAllowed = guestAccessAllowed[pkg] ?: false,
                     appScopes = appScopes[pkg] ?: emptySet(),
                     // At all times prevent duplicate IDs
@@ -90,10 +86,6 @@ class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() 
     private val _enabledModules = MutableStateFlow<Set<String>>(emptySet())
     private val _moduleAppScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val _hookScopes = MutableStateFlow<Map<String, List<HookScope>>>(emptyMap())
-
-    // Store both packages and values instead of a set of enabled value to make it possible to switch
-    // default behavior in the future without changing any data
-    private val _methodRewrites = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val _guestAccess = MutableStateFlow<Map<String, Boolean>>(emptyMap())
 
     private var isVerboseLog = false
@@ -317,20 +309,6 @@ class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() 
 
     override fun getHookScopes(packageName: String?): List<HookScope?>? {
         return _hookScopes.value[packageName]
-    }
-
-    override fun setMethodRewriteAllowed(packageName: String?, allowed: Boolean): Boolean {
-        if (packageName == null) return false
-
-        _methodRewrites.update {
-            it + mapOf(packageName to allowed)
-        }
-
-        return true
-    }
-
-    override fun getMethodRewriteAllowed(): List<String> {
-        return _methodRewrites.value.mapNotNull { if (it.value) it.key else null }
     }
 
     override fun setGuestVirtualizationAllowed(packageName: String?, allowed: Boolean): Boolean {

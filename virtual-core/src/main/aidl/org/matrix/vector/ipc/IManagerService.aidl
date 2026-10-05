@@ -790,14 +790,6 @@ interface IManagerService {
     @nullable List<HookScope> getHookScopes(@nullable String packageName);
 
     /**
-    * Allow modules to rewrite method return values or supress exceptions.
-    * Xposed is designed to always allow this, but it is not necessary for all modules (i.e logging modules).
-    */
-    boolean setMethodRewriteAllowed(@nullable String packageName, boolean allowed);
-
-    List<String> getMethodRewriteAllowed();
-
-    /**
     * Allow modules to access the virtualization framework within the guest app, in addition to the guest app.
     * Enabling this makes the app sandbox significantly weaker, but can be useful for specialized modules which are
     * used to inspect or modify the underlying virtualization framework.
