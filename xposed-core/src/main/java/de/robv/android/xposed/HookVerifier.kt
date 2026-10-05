@@ -10,14 +10,13 @@ import java.lang.reflect.Field
 import java.lang.reflect.Member
 
 object HookVerifier {
-    fun isHookAllowed(hook: Member): Boolean {
-        // First we need to figure out the identity of the module which calls registerHook.
+    fun getModuleCaller(): String? {
+        // We need to figure out the identity of the module which calls registerHook.
         // This is done by correlating the current stacktrace with all loaded modules.
-
         val callingPackages = getStacktraceModuleCallers()
         if (callingPackages == null) {
             Timber.w("No hook caller found, rejecting hook!")
-            return false
+            return null
         }
 
         val loadedModules = VHookClient.getLoadedModules()
@@ -34,12 +33,15 @@ object HookVerifier {
         // There is no reason for this to happen under normal circumstances.
         if (matchingCallers.size != 1) {
             Timber.e("Unable determine the real module hook caller! Rejecting hook!")
-            return false
+            return null
         }
 
         val callingPackage = matchingCallers.first()
-        val callingModule = loadedPackages[callingPackage] ?: return false
+        val callingModule = loadedPackages[callingPackage]
+        return callingModule
+    }
 
+    fun isHookAllowed(hook: Member, callingModule: String): Boolean {
         return VHookClient.isHookAllowed(hook, callingModule)
     }
 

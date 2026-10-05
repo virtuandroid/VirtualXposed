@@ -61,7 +61,20 @@ object ExposedHelper {
 
     @JvmStatic
     fun createHook(target: Member, callback: XC_MethodHook): XC_MethodHook.Unhook {
-        if (!HookVerifier.isHookAllowed(target)) {
+        val caller = HookVerifier.getModuleCaller()
+        if (caller != null) {
+            return createHook(caller, target, callback)
+        }
+        return callback.Unhook(target)
+    }
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun createHook(
+        modulePackage: String,
+        target: Member,
+        callback: XC_MethodHook
+    ): XC_MethodHook.Unhook {
+        if (!HookVerifier.isHookAllowed(target, modulePackage)) {
             return callback.Unhook(target)
         }
 
@@ -71,7 +84,8 @@ object ExposedHelper {
             LogMessage.HookAttach(
                 target.name,
                 target.javaClass.simpleName,
-                target.declaringClass.name
+                target.declaringClass.name,
+                modulePackage
             )
         )
 
@@ -103,6 +117,8 @@ object ExposedHelper {
             params.args = actualArgs
             params.method = oldMethod
             params.thisObject = thisObject
+            var hasRealThrowable = false
+            val cachedArguments = params.args.map { it to it?.hashCode() }
 
             runCatching {
                 callback.beforeHookedMethod(params)
@@ -112,8 +128,15 @@ object ExposedHelper {
             }
 
             if (params.returnEarly) {
+                VLoggingClient.get().log(
+                    LogMessage.HookReturnRewrite(target.name)
+                )
                 return@hook params.result
-                // TODO Log early result!
+            }
+
+            val newArguments = params.args.map { it to it?.hashCode() }
+            if (newArguments != cachedArguments) {
+                VLoggingClient.get().log(LogMessage.HookArgumentsRewrite(target))
             }
 
             try {
@@ -125,8 +148,12 @@ object ExposedHelper {
                 }
             } catch (t: Throwable) {
                 Timber.e(t)
+                hasRealThrowable = true
                 params.throwable = t
             }
+
+            val cachedResult = params.result
+            val cachedHash = cachedResult?.hashCode()
 
             runCatching {
                 callback.afterHookedMethod(params)
@@ -136,7 +163,23 @@ object ExposedHelper {
                 }
             }
 
-            val finalResult = if (params.throwable != null) {
+            // If the reference or hash is changed.
+            // ----
+            // This is not a conclusive assessment, but there is no good way to
+            // determine how the object has been changed by the module. Serialization is
+            // not applicable to all objects and there is no good method of deeply copying
+            // arbitrary objects.
+            if (cachedHash != params.result?.hashCode() || cachedResult != params.result) {
+                VLoggingClient.get().log(LogMessage.HookReturnRewrite(target))
+            }
+
+            // Throwable mismatch, inserted or removed a throwable
+            val hasCurrentThrowable = params.throwable != null
+            if (hasRealThrowable != hasCurrentThrowable) {
+                VLoggingClient.get().log(LogMessage.HookExceptionMismatch(target))
+            }
+
+            val finalResult = if (hasCurrentThrowable) {
                 throw params.throwable
             } else {
                 params.result

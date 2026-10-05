@@ -5,6 +5,7 @@ import android.os.IBinder
 import android.os.RemoteException
 import com.virtualxposed.hook.server.IVHookService
 import com.virtualxposed.log.client.LogMessage
+import com.virtualxposed.log.client.LogMessage.Companion.toPrettyString
 import timber.log.Timber
 import java.lang.reflect.Constructor
 import java.lang.reflect.Member
@@ -51,10 +52,7 @@ object VHookClient {
             return false
         }
 
-        val fullMethod = when (target.javaClass.simpleName) {
-            Constructor::class.simpleName -> "${target.declaringClass.name}.<init>"
-            else -> "${target.declaringClass.name}.${target.name}"
-        }
+        val fullMethod = target.toPrettyString()
 
         try {
             return attacher.getInterface()?.isHookAllowed(fullMethod, modulePackage) == IVHookService.ALLOWED

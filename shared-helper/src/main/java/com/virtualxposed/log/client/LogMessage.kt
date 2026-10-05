@@ -7,6 +7,8 @@ import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
+import java.lang.reflect.Constructor
+import java.lang.reflect.Member
 
 
 // Awaiting @PolymorphicSealed from kotlin 2.5.0-Beta1 update to automatically manage parcelable
@@ -39,6 +41,8 @@ sealed class LogMessage(
                         LogType.AppDeath -> AppDeath()
                         LogType.FileAccess -> FileAccess(parcel)
                         LogType.HookExecution -> HookExecution(parcel)
+                        LogType.HookReturnRewrite -> HookReturnRewrite(parcel)
+                        LogType.HookExceptionMismatch -> HookExceptionMismatch(parcel)
                         LogType.ModuleLoad -> ModuleLoad(parcel)
                         LogType.BroadcastReceived -> BroadCastReceived(parcel)
                         LogType.CodeLoad -> CodeLoad(parcel)
@@ -52,12 +56,20 @@ sealed class LogMessage(
                         LogType.SocketConnect -> SocketConnect(parcel)
                         LogType.FingerprintChange -> FingerprintChange(parcel)
                         LogType.FileIdentical -> FileIdentical(parcel)
+                        LogType.HookArgumentsRewrite -> HookArgumentsRewrite(parcel)
                         null -> null
                     }
                 }.getOrNull()
             }
 
             override fun newArray(size: Int): Array<LogMessage?> = arrayOfNulls(size)
+        }
+
+        fun Member.toPrettyString(): String {
+            return when (this.javaClass.simpleName) {
+                Constructor::class.simpleName -> "${this.declaringClass.name}.<init>"
+                else -> "${this.declaringClass.name}.${this.name}"
+            }
         }
     }
 
@@ -67,14 +79,21 @@ sealed class LogMessage(
         val targetName: String,
         val targetType: String,
         val targetClass: String,
+        val modulePackage: String,
     ) : LogMessage(LogType.HookAttach) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!, parcel.readString()!!)
+        constructor(parcel: Parcel) : this(
+            parcel.readString()!!,
+            parcel.readString()!!,
+            parcel.readString()!!,
+            parcel.readString()!!,
+        )
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(targetName)
             parcel.writeString(targetType)
             parcel.writeString(targetClass)
+            parcel.writeString(modulePackage)
         }
     }
 
@@ -84,6 +103,45 @@ sealed class LogMessage(
         val method: String
     ) : LogMessage(LogType.HookExecution) {
         constructor(parcel: Parcel) : this(parcel.readString()!!)
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(method)
+        }
+    }
+
+    @Serializable
+    data class HookArgumentsRewrite(
+        val method: String,
+    ) : LogMessage(LogType.HookArgumentsRewrite) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!)
+        constructor(method: Member) : this(method.toPrettyString())
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(method)
+        }
+    }
+
+    @Serializable
+    data class HookReturnRewrite(
+        val method: String,
+    ) : LogMessage(LogType.HookReturnRewrite) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!)
+        constructor(method: Member) : this(method.toPrettyString())
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(method)
+        }
+    }
+
+    @Serializable
+    data class HookExceptionMismatch(
+        val method: String,
+    ) : LogMessage(LogType.HookExceptionMismatch) {
+        constructor(parcel: Parcel) : this(parcel.readString()!!)
+        constructor(method: Member) : this(method.toPrettyString())
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
@@ -338,6 +396,5 @@ sealed class LogMessage(
             parcel.writeString(fileCopyPath)
         }
     }
-
 }
 

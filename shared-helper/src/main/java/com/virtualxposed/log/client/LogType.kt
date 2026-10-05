@@ -25,5 +25,8 @@ enum class LogType : Parcelable {
     UsePermission,
     FingerprintChange,
     FileIdentical,
+    HookExceptionMismatch,
+    HookReturnRewrite,
+    HookArgumentsRewrite,
     FileAccess;
 }
