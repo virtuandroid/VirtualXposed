@@ -100,39 +100,46 @@ sealed class LogMessage(
     @SuppressLint("UnsafeOptInUsageError")
     @Serializable
     data class HookExecution(
-        val method: String
+        val method: String,
+        val modulePackage: String,
     ) : LogMessage(LogType.HookExecution) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!)
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
+        constructor(method: Member, caller: String) : this(method.toPrettyString(), caller)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(method)
+            parcel.writeString(modulePackage)
         }
     }
 
     @Serializable
     data class HookArgumentsRewrite(
         val method: String,
+        val modulePackage: String,
     ) : LogMessage(LogType.HookArgumentsRewrite) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!)
-        constructor(method: Member) : this(method.toPrettyString())
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
+        constructor(method: Member, caller: String) : this(method.toPrettyString(), caller)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(method)
+            parcel.writeString(modulePackage)
         }
     }
 
     @Serializable
     data class HookReturnRewrite(
         val method: String,
+        val modulePackage: String,
     ) : LogMessage(LogType.HookReturnRewrite) {
-        constructor(parcel: Parcel) : this(parcel.readString()!!)
-        constructor(method: Member) : this(method.toPrettyString())
+        constructor(parcel: Parcel) : this(parcel.readString()!!, parcel.readString()!!)
+        constructor(method: Member, caller: String) : this(method.toPrettyString(), caller)
 
         override fun writeToParcel(parcel: Parcel, flags: Int) {
             super.writeToParcel(parcel, flags)
             parcel.writeString(method)
+            parcel.writeString(modulePackage)
         }
     }
 

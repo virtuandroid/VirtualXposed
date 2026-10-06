@@ -90,7 +90,7 @@ object ExposedHelper {
         )
 
         return trace("Method hook") {
-            hookMember(target, callback)
+            hookMember(modulePackage, target, callback)
         }
     }
 
@@ -101,7 +101,7 @@ object ExposedHelper {
 
     @Suppress("NOTHING_TO_INLINE")
     // We want this inlined to prevent security bypasses with reflection.
-    private inline fun hookMember(target: Member, callback: XC_MethodHook): XC_MethodHook.Unhook {
+    private inline fun hookMember(modulePackage: String, target: Member, callback: XC_MethodHook): XC_MethodHook.Unhook {
         val hooker = hookManager.hook(target) { oldMethod, args ->
             val params = MethodHookParam()
             Timber.d("Executing hooked method: ${oldMethod.name}")
@@ -129,14 +129,14 @@ object ExposedHelper {
 
             if (params.returnEarly) {
                 VLoggingClient.get().log(
-                    LogMessage.HookReturnRewrite(target.name)
+                    LogMessage.HookReturnRewrite(target, modulePackage)
                 )
                 return@hook params.result
             }
 
             val newArguments = params.args.map { it to it?.hashCode() }
             if (newArguments != cachedArguments) {
-                VLoggingClient.get().log(LogMessage.HookArgumentsRewrite(target))
+                VLoggingClient.get().log(LogMessage.HookArgumentsRewrite(target, modulePackage))
             }
 
             try {
@@ -170,7 +170,7 @@ object ExposedHelper {
             // not applicable to all objects and there is no good method of deeply copying
             // arbitrary objects.
             if (cachedHash != params.result?.hashCode() || cachedResult != params.result) {
-                VLoggingClient.get().log(LogMessage.HookReturnRewrite(target))
+                VLoggingClient.get().log(LogMessage.HookReturnRewrite(target, modulePackage))
             }
 
             // Throwable mismatch, inserted or removed a throwable

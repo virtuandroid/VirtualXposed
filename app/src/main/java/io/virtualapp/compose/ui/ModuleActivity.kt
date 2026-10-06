@@ -1,6 +1,5 @@
 package io.virtualapp.compose.ui
 
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,6 +20,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,9 +44,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
@@ -53,6 +56,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -72,6 +76,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -86,6 +91,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,6 +99,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import com.virtualxposed.hook.PackageID
+import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.toPersistentList
 import org.matrix.vector.ipc.HookScope
 import org.matrix.vector.ipc.HookScope.Companion.reindexScopes
 
@@ -103,8 +112,7 @@ class ModuleActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
                 ) {
                     AppsScreen(viewModel(factory = viewModelFactory {
                         initializer {
@@ -127,38 +135,31 @@ fun AppsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val onIntent = viewModel::processIntent
 
-    AnimatedContent(
-        targetState = state.selectedModule,
-        transitionSpec = {
-            if (targetState != null) {
-                (fadeIn(animationSpec = tween(150)) + slideInHorizontally { it / 2 }) togetherWith
-                        (fadeOut(animationSpec = tween(150)) + slideOutHorizontally { -it / 2 })
-            } else {
-                (fadeIn(animationSpec = tween(150)) + slideInHorizontally { -it / 2 }) togetherWith
-                        (fadeOut(animationSpec = tween(150)) + slideOutHorizontally { it / 2 })
-            }
-        },
-        label = "IfElseTransition",
-        contentKey = { it?.packageName }
-    ) { currentModule ->
+    AnimatedContent(targetState = state.selectedModule, transitionSpec = {
+        if (targetState != null) {
+            (fadeIn(animationSpec = tween(150)) + slideInHorizontally { it / 2 }) togetherWith (fadeOut(
+                animationSpec = tween(150)
+            ) + slideOutHorizontally { -it / 2 })
+        } else {
+            (fadeIn(animationSpec = tween(150)) + slideInHorizontally { -it / 2 }) togetherWith (fadeOut(
+                animationSpec = tween(150)
+            ) + slideOutHorizontally { it / 2 })
+        }
+    }, label = "IfElseTransition", contentKey = { it?.packageName }) { currentModule ->
         if (currentModule != null) {
             Scaffold(
                 topBar = {
-                    TopAppBar(
-                        title = { Text(currentModule.appName) },
-                        navigationIcon = {
-                            IconButton(onClick = { onIntent.invoke(MainIntent.OnItemClicked(null)) }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Back"
-                                )
-                            }
+                    TopAppBar(title = { Text(currentModule.appName) }, navigationIcon = {
+                        IconButton(onClick = { onIntent.invoke(MainIntent.OnItemClicked(null)) }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back"
+                            )
                         }
-                    )
-                }
-            ) { innerPadding ->
+                    })
+                }) { innerPadding ->
                 XposedDetailScreen(
                     moduleInfo = currentModule,
+                    allApps = state.allApps,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
@@ -169,10 +170,8 @@ fun AppsScreen(
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = { Text("Xposed Modules") }
-                    )
-                }
-            ) { innerPadding ->
+                        title = { Text("Xposed Modules") })
+                }) { innerPadding ->
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -188,8 +187,7 @@ fun AppsScreen(
                     ) {
                         items(
                             items = state.modules,
-                            key = { it.packageInfo.packageName }
-                        ) { moduleInfo ->
+                            key = { it.packageInfo.packageName }) { moduleInfo ->
                             XposedListItem(
                                 moduleInfo = moduleInfo,
                                 onClick = { onIntent(MainIntent.OnItemClicked(moduleInfo)) },
@@ -209,23 +207,18 @@ fun AppsScreen(
 
 @Composable
 private fun XposedListItem(
-    moduleInfo: ModuleInfo,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    moduleInfo: ModuleInfo, onClick: () -> Unit, modifier: Modifier = Modifier
 ) {
     val enabled = moduleInfo.isEnabled
 
     Card(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
+        onClick = onClick, modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
             containerColor = if (enabled) {
                 MaterialTheme.colorScheme.surface
             } else {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             }
-        ),
-        elevation = CardDefaults.cardElevation(
+        ), elevation = CardDefaults.cardElevation(
             defaultElevation = if (enabled) 2.dp else 0.dp
         )
     ) {
@@ -276,6 +269,7 @@ private fun XposedListItem(
 @Composable
 private fun XposedDetailScreen(
     moduleInfo: ModuleInfo,
+    allApps: PersistentList<PackageInfoLite>,
     onIntent: (MainIntent) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -309,8 +303,7 @@ private fun XposedDetailScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
+            modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
             )
         ) {
@@ -334,19 +327,16 @@ private fun XposedDetailScreen(
                     )
                 }
                 Switch(
-                    checked = isEnabled,
-                    onCheckedChange = { checked ->
+                    checked = isEnabled, onCheckedChange = { checked ->
                         onIntent.invoke(MainIntent.OnModuleEnable(enabled = checked, moduleInfo))
-                    }
-                )
+                    })
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
+            modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
             )
         ) {
@@ -364,26 +354,30 @@ private fun XposedDetailScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "When enabled the modules are loaded together with the full virtualization framework classloader. " +
-                                "\n\nThis is a security risk. It should only be enabled for modules created to instrument VirtualXposed itself.",
+                        text = "When enabled the modules are loaded together with the full virtualization framework classloader. " + "\n\nThis is a security risk. It should only be enabled for modules created to instrument VirtualXposed itself.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Switch(
-                    checked = moduleInfo.fullGuestAccess,
-                    onCheckedChange = { checked ->
+                    checked = moduleInfo.fullGuestAccess, onCheckedChange = { checked ->
                         onIntent.invoke(MainIntent.OnModuleGuestSetting(checked, moduleInfo))
-                    }
-                )
+                    })
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        HookScopesSection(
+        AppScopesSection(
             moduleInfo = moduleInfo,
+            allApps = allApps,
             onIntent = onIntent
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        HookScopesSection(
+            moduleInfo = moduleInfo, onIntent = onIntent
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -410,25 +404,17 @@ private fun XposedDetailScreen(
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Package Information",
-                    style = MaterialTheme.typography.titleMedium
+                    text = "Package Information", style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    pkg.longVersionCode.toString()
-                } else {
-                    @Suppress("DEPRECATION")
-                    pkg.versionCode.toString()
-                }
                 DebugInfoRow("Version Name", pkg.versionName ?: "N/A")
-                DebugInfoRow("Version Code", versionCode)
+                DebugInfoRow("Version Code", pkg.versionCode.toString())
                 DebugInfoRow(
-                    "Target SDK",
-                    pkg.applicationInfo?.targetSdkVersion?.toString() ?: "N/A"
+                    "Target SDK", pkg.targetSdkVersion?.toString() ?: "N/A"
                 )
-                DebugInfoRow("Min SDK", pkg.applicationInfo?.minSdkVersion?.toString() ?: "N/A")
-                DebugInfoRow("APK Path", pkg.applicationInfo?.sourceDir ?: "N/A")
+                DebugInfoRow("Min SDK", pkg.minSdkVersion?.toString() ?: "N/A")
+                DebugInfoRow("APK Path", pkg.sourceDir ?: "N/A")
             }
         }
 
@@ -438,8 +424,7 @@ private fun XposedDetailScreen(
 
 @Composable
 private fun HookScopesSection(
-    moduleInfo: ModuleInfo,
-    onIntent: (MainIntent) -> Unit
+    moduleInfo: ModuleInfo, onIntent: (MainIntent) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     val scopes = moduleInfo.hookScopes
@@ -449,8 +434,7 @@ private fun HookScopesSection(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
+        modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
     ) {
@@ -570,23 +554,298 @@ private fun HookScopesSection(
     }
 
     if (showAddDialog) {
-        AddScopeDialog(
-            onDismiss = { showAddDialog = false },
-            onConfirm = { name, pattern, action ->
-                val newScope = HookScope(
-                    name = name,
-                    scope = pattern,
-                    action = action,
-                    active = true,
-                    priority = scopes.size,
-                )
-                onScopesUpdated(scopes + newScope)
-                showAddDialog = false
-            }
-        )
+        AddScopeDialog(onDismiss = { showAddDialog = false }, onConfirm = { name, pattern, action ->
+            val newScope = HookScope(
+                name = name,
+                scope = pattern,
+                action = action,
+                active = true,
+                priority = scopes.size,
+            )
+            onScopesUpdated(scopes + newScope)
+            showAddDialog = false
+        })
     }
 }
 
+
+@Composable
+private fun AppScopesSection(
+    moduleInfo: ModuleInfo,
+    allApps: PersistentList<PackageInfoLite>,
+    onIntent: (MainIntent) -> Unit
+) {
+    var showAppPicker by remember { mutableStateOf(false) }
+    val currentAppScopes = moduleInfo.appScopes
+    LookaheadScope {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateBounds(this), colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "App Scopes",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Select applications where this module should be applied. The module is always allowed to load into itself.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = { showAppPicker = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add App Scope",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (currentAppScopes.isEmpty()) {
+                    Text(
+                        text = "No target applications selected",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        currentAppScopes.forEach { packageId ->
+                            key(packageId.packageName, packageId.userId) {
+                                val appInfo = remember(packageId, allApps) {
+                                    allApps.find { it.packageId.packageName == packageId.packageName }
+                                } ?: return@forEach
+
+                                AppScopeItem(
+                                    moduleInfo.packageInfo,
+                                    scopePackageInfo = appInfo,
+                                    onRemove = {
+                                        val updated = currentAppScopes.filterNot { it == packageId }
+                                        onIntent(MainIntent.OnModuleAppScope(updated, moduleInfo))
+                                    },
+                                    modifier = Modifier.animateBounds(lookaheadScope = this@LookaheadScope)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAppPicker) {
+        AppScopePickerDialog(
+            allApps = allApps.filter { it.packageId.packageName != moduleInfo.packageName }
+                .toPersistentList(),
+            selectedScopes = currentAppScopes,
+            onDismiss = { showAppPicker = false },
+            onConfirm = { newScopes ->
+                onIntent(MainIntent.OnModuleAppScope(newScopes, moduleInfo))
+                showAppPicker = false
+            })
+    }
+}
+
+
+@Composable
+private fun AppScopeItem(
+    modulePackage: PackageInfoLite,
+    scopePackageInfo: PackageInfoLite,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (scopePackageInfo.icon != null) {
+                Image(
+                    painter = rememberDrawablePainter(scopePackageInfo.icon),
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Android,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = scopePackageInfo.label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = scopePackageInfo.packageId.packageName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Module is always allowed to load into itself, akin to Vector
+            if (modulePackage.packageName != scopePackageInfo.packageId.packageName) {
+                IconButton(onClick = onRemove) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Remove App Scope",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun AppScopePickerDialog(
+    allApps: PersistentList<PackageInfoLite>,
+    selectedScopes: PersistentList<PackageID>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<PackageID>) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val selectedPackageIds = remember {
+        mutableStateListOf<PackageID>().apply { addAll(selectedScopes) }
+    }
+
+    val filteredApps = remember(searchQuery, allApps) {
+        if (searchQuery.isBlank()) {
+            allApps
+        } else {
+            allApps.filter { pkg ->
+                val label = pkg.label
+                label.contains(
+                    searchQuery,
+                    ignoreCase = true
+                ) || pkg.packageId.packageName.contains(
+                    searchQuery,
+                    ignoreCase = true
+                )
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Select Target Apps") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search apps...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 350.dp)
+                ) {
+                    items(
+                        items = filteredApps, key = { it.packageId.packageName }) { pkg ->
+                        val targetPackageId = pkg.packageId
+                        val isChecked = selectedPackageIds.contains(targetPackageId)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (isChecked) {
+                                        selectedPackageIds.remove(targetPackageId)
+                                    } else {
+                                        selectedPackageIds.add(targetPackageId)
+                                    }
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = isChecked, onCheckedChange = { checked ->
+                                    if (checked) {
+                                        selectedPackageIds.add(targetPackageId)
+                                    } else {
+                                        selectedPackageIds.remove(targetPackageId)
+                                    }
+                                })
+
+                            if (pkg.icon != null) {
+                                Image(
+                                    painter = rememberDrawablePainter(pkg.icon),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = pkg.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = pkg.packageName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedPackageIds) }) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        })
+}
 
 @Composable
 private fun HookScopeItem(
@@ -612,11 +871,9 @@ private fun HookScopeItem(
     val actionIcon = if (isAllow) Icons.Default.CheckCircle else Icons.Default.Block
 
     Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
+        modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
-        ),
-        border = BorderStroke(
+        ), border = BorderStroke(
             width = 1.dp,
             color = if (isEnabled) actionColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
         )
@@ -629,8 +886,7 @@ private fun HookScopeItem(
         ) {
             if (scope.active) {
                 IconButton(
-                    onClick = onToggleAction,
-                    enabled = isEnabled
+                    onClick = onToggleAction, enabled = isEnabled
                 ) {
                     Icon(
                         imageVector = actionIcon,
@@ -671,9 +927,7 @@ private fun HookScopeItem(
 
             Column {
                 IconButton(
-                    onClick = onMoveUp,
-                    enabled = index > 0,
-                    modifier = Modifier.size(24.dp)
+                    onClick = onMoveUp, enabled = index > 0, modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowUp,
@@ -720,107 +974,98 @@ private fun HookScopeItem(
 
 @Composable
 private fun AddScopeDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (name: String, scope: String, action: Int) -> Unit
+    onDismiss: () -> Unit, onConfirm: (name: String, scope: String, action: Int) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var pattern by remember { mutableStateOf("") }
     var action by remember { mutableIntStateOf(HookScope.ACTION_ALLOW) }
     var patternError by remember { mutableStateOf(false) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Hook Scope") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Rule Name (Optional)") },
-                    placeholder = { Text("e.g. Block Reflection") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Add Hook Scope") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Rule Name (Optional)") },
+                placeholder = { Text("e.g. Block Reflection") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-                OutlinedTextField(
-                    value = pattern,
-                    onValueChange = {
-                        pattern = it
-                        patternError = false
-                    },
-                    label = { Text("Scope Glob Pattern") },
-                    placeholder = { Text("e.g. com.example.**") },
-                    singleLine = true,
-                    isError = patternError,
-                    supportingText = {
-                        if (patternError) {
-                            Text("Scope pattern cannot be empty")
-                        } else {
-                            Text("Use * for shallow match\nUse ** for deep match")
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Text(
-                    text = "Action",
-                    style = MaterialTheme.typography.labelMedium
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = action == HookScope.ACTION_ALLOW,
-                        onClick = { action = HookScope.ACTION_ALLOW },
-                        label = { Text("Allow") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = Color(0xFF2E7D32)
-                            )
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    FilterChip(
-                        selected = action == HookScope.ACTION_BLOCK,
-                        onClick = { action = HookScope.ACTION_BLOCK },
-                        label = { Text("Block") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Block,
-                                contentDescription = null,
-                                tint = Color(0xFFC62828)
-                            )
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (pattern.isBlank()) {
-                        patternError = true
+            OutlinedTextField(
+                value = pattern,
+                onValueChange = {
+                    pattern = it
+                    patternError = false
+                },
+                label = { Text("Scope Glob Pattern") },
+                placeholder = { Text("e.g. com.example.**") },
+                singleLine = true,
+                isError = patternError,
+                supportingText = {
+                    if (patternError) {
+                        Text("Scope pattern cannot be empty")
                     } else {
-                        onConfirm(name.trim(), pattern.trim(), action)
+                        Text("Use * for shallow match\nUse ** for deep match")
                     }
-                }
+                },
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Text(
+                text = "Action", style = MaterialTheme.typography.labelMedium
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                FilterChip(
+                    selected = action == HookScope.ACTION_ALLOW,
+                    onClick = { action = HookScope.ACTION_ALLOW },
+                    label = { Text("Allow") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF2E7D32)
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+
+                FilterChip(
+                    selected = action == HookScope.ACTION_BLOCK,
+                    onClick = { action = HookScope.ACTION_BLOCK },
+                    label = { Text("Block") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Block,
+                            contentDescription = null,
+                            tint = Color(0xFFC62828)
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
-    )
+    }, confirmButton = {
+        TextButton(
+            onClick = {
+                if (pattern.isBlank()) {
+                    patternError = true
+                } else {
+                    onConfirm(name.trim(), pattern.trim(), action)
+                }
+            }) {
+            Text("Add")
+        }
+    }, dismissButton = {
+        TextButton(onClick = onDismiss) {
+            Text("Cancel")
+        }
+    })
 }
 
 @Composable
@@ -841,9 +1086,7 @@ private fun DebugInfoRow(label: String, value: String) {
 
 @Composable
 fun SettingsSearch(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -859,9 +1102,7 @@ fun SettingsSearch(
             MaterialTheme.colorScheme.surfaceVariant
         } else {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-        },
-        animationSpec = tween(durationMillis = 250),
-        label = "ContainerColorAnimation"
+        }, animationSpec = tween(durationMillis = 250), label = "ContainerColorAnimation"
     )
 
     TextField(
@@ -877,8 +1118,7 @@ fun SettingsSearch(
         },
         leadingIcon = {
             Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "Search icon"
+                imageVector = Icons.Default.Search, contentDescription = "Search icon"
             )
         },
         trailingIcon = {
@@ -889,8 +1129,7 @@ fun SettingsSearch(
             ) {
                 IconButton(onClick = { onQueryChange("") }) {
                     Icon(
-                        imageVector = Icons.Default.Clear,
-                        contentDescription = "Clear search query"
+                        imageVector = Icons.Default.Clear, contentDescription = "Clear search query"
                     )
                 }
             }
@@ -924,13 +1163,11 @@ fun SettingsSearch(
 private fun HookScopePreviewAllow() {
     HookScopeItem(
         HookScope(
-            HookScope.ACTION_ALLOW,
-            "java.lang.**", "Allow the Java Library", true, 0
+            HookScope.ACTION_ALLOW, "java.lang.**", "Allow the Java Library", true, 0
         ),
         index = 0,
         totalSize = 10,
-    ) {
-    }
+    ) {}
 }
 
 @Composable
@@ -938,11 +1175,9 @@ private fun HookScopePreviewAllow() {
 private fun HookScopePreviewDeny() {
     HookScopeItem(
         HookScope(
-            HookScope.ACTION_BLOCK,
-            "java.lang.**", "Deny the Java Library", true, 0
+            HookScope.ACTION_BLOCK, "java.lang.**", "Deny the Java Library", true, 0
         ),
         index = 0,
         totalSize = 10,
-    ) {
-    }
+    ) {}
 }

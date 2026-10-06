@@ -9,24 +9,79 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.matrix.vector.service.VectorManagerService
 import org.matrix.vector.ipc.HookScope
 import org.matrix.vector.ipc.HookScope.Companion.sortedStable
 import org.matrix.vector.ipc.HookScope.Companion.reindexScopes
 import org.matrix.vector.ipc.IManagerService
 import timber.log.Timber
 import android.graphics.drawable.Drawable
+import android.os.Build
+import androidx.compose.runtime.Immutable
+import com.lody.virtual.os.VUserHandle.PER_USER_RANGE
+import com.virtualxposed.hook.PackageID
 import com.virtualxposed.hook.VHookClient
+import io.virtualapp.compose.ui.PackageInfoLite.Companion.toPackageInfoLite
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
-import org.matrix.vector.service.IVectorManagerService
+import org.matrix.vector.ipc.ScopeEntry
 
+@Immutable
 data class ModuleScreenState(
     val modules: PersistentList<ModuleInfo> = persistentListOf(),
     val searchQuery: String = "",
-    val selectedModule: ModuleInfo? = null
+    val selectedModule: ModuleInfo? = null,
+    val allApps: PersistentList<PackageInfoLite> = persistentListOf()
 )
+
+@Immutable
+data class PackageInfoLite(
+    val packageId: PackageID,
+    val label: String,
+    val icon: Drawable?,
+    val versionName: String?,
+    val versionCode: Long,
+    val targetSdkVersion: Int?,
+    val minSdkVersion: Int?,
+    val sourceDir: String?
+) {
+    val packageName = packageId.packageName
+
+    companion object {
+        private fun getUserIdFromPackageInfo(packageInfo: PackageInfo): Int? {
+            val uid = packageInfo.applicationInfo?.uid
+            if (uid != null) {
+                return uid / PER_USER_RANGE
+            }
+            return null
+        }
+
+        fun PackageInfo.toPackageInfoLite(packageManger: PackageManager): PackageInfoLite {
+            val name =
+                this.applicationInfo?.let { packageManger.getApplicationLabel(it) }?.toString()
+                    ?: this.packageName
+            val drawable = this.applicationInfo?.loadIcon(packageManger)
+            val userId = getUserIdFromPackageInfo(this) ?: -1
+
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                this.longVersionCode
+            } else {
+                @Suppress("DEPRECATION") this.versionCode.toLong()
+            }
+
+            return PackageInfoLite(
+                PackageID(this.packageName, userId),
+                name,
+                drawable,
+                this.versionName,
+                versionCode,
+                this.applicationInfo?.targetSdkVersion,
+                this.applicationInfo?.minSdkVersion,
+                this.applicationInfo?.sourceDir
+            )
+        }
+    }
+}
 
 sealed interface MainIntent {
     data class OnSearchQueryChanged(val query: String) : MainIntent
@@ -35,10 +90,11 @@ sealed interface MainIntent {
     data class OnModuleScope(val scopes: List<HookScope>, val item: ModuleInfo) : MainIntent
     data class OnModuleGuestSetting(val enabled: Boolean, val item: ModuleInfo) : MainIntent
     data class AddRecommendedScopes(val item: ModuleInfo) : MainIntent
+    data class OnModuleAppScope(val scopes: List<PackageID>, val item: ModuleInfo) : MainIntent
 }
 
 data class ModuleInfo(
-    val packageInfo: PackageInfo,
+    val packageInfo: PackageInfoLite,
     val appName: String,
     val icon: Drawable?,
     val xposedMinVersion: String,
@@ -47,9 +103,10 @@ data class ModuleInfo(
     val fullGuestAccess: Boolean,
     /** This should always be sorted, for convenience and to prevent re-sorting on recompositions */
     val hookScopes: PersistentList<HookScope>,
+    val appScopes: PersistentList<PackageID>,
 ) {
     // Shorthand
-    val packageName = packageInfo.packageName
+    val packageName = packageInfo.packageId.packageName
 }
 
 class ModuleViewModel : ViewModel() {
@@ -209,22 +266,30 @@ class ModuleViewModel : ViewModel() {
                 val scopes = binder?.getHookScopes(packageName)?.sortedStable() ?: emptyList()
                 val isEnabled = enabledModules?.contains(packageName) ?: false
                 val guestAccess = fullGuestAccessList?.contains(packageName) ?: false
+                val appScopes = binder?.getModuleScope(packageName)
+                    ?.map { PackageID(it.packageName, it.userId) }
+                    ?.sortedWith(compareByDescending<PackageID> {
+                        it.packageName == pkg.packageName
+                    }
+                        .thenBy { it.packageName }
+                    ) ?: emptyList()
 
                 ModuleInfo(
-                    packageInfo = pkg,
+                    packageInfo = pkg.toPackageInfoLite(packageManager),
                     appName = appName,
                     icon = icon,
                     xposedMinVersion = minVersion,
                     xposedDescription = description,
                     isEnabled = isEnabled,
                     fullGuestAccess = guestAccess,
-                    hookScopes = scopes.toPersistentList()
+                    hookScopes = scopes.toPersistentList(),
+                    appScopes = appScopes.toPersistentList()
                 )
             } else null
         }
     }
 
-    fun loadData(packageManger: PackageManager) {
+    fun loadData(packageManager: PackageManager) {
         viewModelScope.launch {
             val binder = VHookClient.getVectorManager() ?: return@launch
             val manager = IManagerService.Stub.asInterface(binder).also {
@@ -236,11 +301,17 @@ class ModuleViewModel : ViewModel() {
                 false
             ).list.filterNotNull()
 
-            val xposedModules = getXposedPackages(packages, packageManger)
+            val xposedModules = getXposedPackages(packages, packageManager)
+            val allApps = packages.map { pkg ->
+                pkg.toPackageInfoLite(packageManager)
+            }
 
             _uiState.update {
                 allModules = xposedModules
-                it.copy(modules = xposedModules.sortedModules().toPersistentList())
+                it.copy(
+                    modules = xposedModules.sortedModules().toPersistentList(),
+                    allApps = allApps.toPersistentList()
+                )
             }
         }
     }
@@ -296,6 +367,32 @@ class ModuleViewModel : ViewModel() {
         }
     }
 
+    fun changeModuleAppScopes(item: ModuleInfo, scopes: List<PackageID>) {
+        val packageName = item.packageInfo.packageName
+        val binderScopes = scopes.map {
+            ScopeEntry().apply {
+                this.packageName = it.packageName
+                this.userId = it.userId
+            }
+        }
+        val success = binder?.setModuleScope(packageName, binderScopes) == true
+
+        if (success) {
+            val sorted = scopes.sortedWith(compareByDescending<PackageID> {
+                it.packageName == item.packageName
+            }
+                .thenBy { it.packageName }
+            )
+
+            updateModule(
+                item.copy(
+                    appScopes = sorted
+                        .toPersistentList()
+                )
+            )
+        }
+    }
+
     fun processIntent(intent: MainIntent) {
         Timber.i("Process intent: $intent")
         when (intent) {
@@ -304,7 +401,12 @@ class ModuleViewModel : ViewModel() {
             is MainIntent.OnModuleEnable -> changeModuleEnabled(intent.item, intent.enabled)
             is MainIntent.OnModuleScope -> changeModuleScopes(intent.item, intent.scopes)
             is MainIntent.AddRecommendedScopes -> addRecommendedScopes(intent.item)
-            is MainIntent.OnModuleGuestSetting -> changeModuleGuestAccess(intent.item, intent.enabled)
+            is MainIntent.OnModuleGuestSetting -> changeModuleGuestAccess(
+                intent.item,
+                intent.enabled
+            )
+
+            is MainIntent.OnModuleAppScope -> changeModuleAppScopes(intent.item, intent.scopes)
         }
     }
 }
