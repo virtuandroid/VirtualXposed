@@ -44,6 +44,11 @@ public final class InstalledAppInfo implements Parcelable {
         return VPackageManager.get().getPackageInfo(packageName, 0, userId);
     }
 
+    public PackageInfo getPackageInfo(int userId, int flags) {
+        return VPackageManager.get().getPackageInfo(packageName, flags, userId);
+    }
+
+
     public int[] getInstalledUsers() {
         return VirtualCore.get().getPackageInstalledUsers(packageName);
     }

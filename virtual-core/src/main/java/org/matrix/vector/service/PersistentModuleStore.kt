@@ -1,6 +1,7 @@
 package org.matrix.vector.service
 
 import android.annotation.SuppressLint
+import com.virtualxposed.hook.PackageID
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.matrix.vector.ipc.HookScope
@@ -21,13 +22,14 @@ data class ModuleStore(
 // Simple extensible data storage for module settings
 data class ModuleSettings(
     val guestVirtualizationAllowed: Boolean,
-    val appScopes: Set<String>,
+    val appScopes: Set<PackageID>,
     val hookScopes: List<HookScope>
 )
 
 object PersistentModuleStore {
     private val json = Json {
         ignoreUnknownKeys = true
+        allowStructuredMapKeys = true
     }
 
     fun writeStore(backingFile: File, store: ModuleStore) {

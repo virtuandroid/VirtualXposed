@@ -2,29 +2,29 @@ package io.virtualapp.compose.ui
 
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import org.matrix.vector.ipc.HookScope
-import org.matrix.vector.ipc.HookScope.Companion.sortedStable
-import org.matrix.vector.ipc.HookScope.Companion.reindexScopes
-import org.matrix.vector.ipc.IManagerService
-import timber.log.Timber
 import android.graphics.drawable.Drawable
 import android.os.Build
 import androidx.compose.runtime.Immutable
-import com.lody.virtual.os.VUserHandle.PER_USER_RANGE
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.lody.virtual.os.VUserHandle
 import com.virtualxposed.hook.PackageID
 import com.virtualxposed.hook.VHookClient
 import io.virtualapp.compose.ui.PackageInfoLite.Companion.toPackageInfoLite
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import org.matrix.vector.ipc.HookScope
+import org.matrix.vector.ipc.HookScope.Companion.reindexScopes
+import org.matrix.vector.ipc.HookScope.Companion.sortedStable
+import org.matrix.vector.ipc.IManagerService
 import org.matrix.vector.ipc.ScopeEntry
+import timber.log.Timber
 
 @Immutable
 data class ModuleScreenState(
@@ -48,20 +48,13 @@ data class PackageInfoLite(
     val packageName = packageId.packageName
 
     companion object {
-        private fun getUserIdFromPackageInfo(packageInfo: PackageInfo): Int? {
-            val uid = packageInfo.applicationInfo?.uid
-            if (uid != null) {
-                return uid / PER_USER_RANGE
-            }
-            return null
-        }
 
         fun PackageInfo.toPackageInfoLite(packageManger: PackageManager): PackageInfoLite {
             val name =
                 this.applicationInfo?.let { packageManger.getApplicationLabel(it) }?.toString()
                     ?: this.packageName
             val drawable = this.applicationInfo?.loadIcon(packageManger)
-            val userId = getUserIdFromPackageInfo(this) ?: -1
+            val userId = VUserHandle.getUserId(this.applicationInfo?.uid ?: 0)
 
             val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 this.longVersionCode
@@ -71,7 +64,7 @@ data class PackageInfoLite(
 
             return PackageInfoLite(
                 PackageID(this.packageName, userId),
-                name,
+                name + if (userId != 0) " [$userId]" else "",
                 drawable,
                 this.versionName,
                 versionCode,
@@ -95,8 +88,6 @@ sealed interface MainIntent {
 
 data class ModuleInfo(
     val packageInfo: PackageInfoLite,
-    val appName: String,
-    val icon: Drawable?,
     val xposedMinVersion: String,
     val xposedDescription: String,
     val isEnabled: Boolean,
@@ -114,7 +105,19 @@ class ModuleViewModel : ViewModel() {
         private fun List<ModuleInfo>.sortedModules(): List<ModuleInfo> {
             return this.sortedWith(compareBy<ModuleInfo> {
                 !it.isEnabled
-            }.thenBy { it.appName })
+            }.thenBy { it.packageInfo.label }.thenBy { it.packageInfo.packageId.userId })
+        }
+
+        private fun List<PackageID>.sortedPackages(currentPackageID: PackageID? = null): List<PackageID> {
+            return this.sortedWith(compareByDescending<PackageID> {
+                it.packageName == currentPackageID?.packageName
+            }.thenBy { it.packageName }.thenBy { it.userId })
+        }
+
+        private fun List<PackageInfoLite>.sortedPackages(): List<PackageInfoLite> {
+            return this.sortedWith(compareBy<PackageInfoLite> {
+                it.label
+            }.thenBy { it.packageName }.thenBy { it.packageId.userId })
         }
 
         private val recommendedScopes = listOf(
@@ -212,7 +215,7 @@ class ModuleViewModel : ViewModel() {
                 allModules
             } else {
                 allModules.filter { moduleInfo ->
-                    moduleInfo.appName.contains(newQuery, ignoreCase = true) ||
+                    moduleInfo.packageInfo.label.contains(newQuery, ignoreCase = true) ||
                             moduleInfo.packageInfo.packageName.contains(
                                 newQuery,
                                 ignoreCase = true
@@ -244,9 +247,6 @@ class ModuleViewModel : ViewModel() {
 
             if (isXposed) {
                 val packageName = pkg.packageName
-                val appName =
-                    pkg.applicationInfo?.loadLabel(packageManager)?.toString() ?: packageName
-                val icon = pkg.applicationInfo?.loadIcon(packageManager)
 
                 val minVersion =
                     metaData.getInt("xposedminversion").takeIf { it > 0 }?.toString() ?: "Unknown"
@@ -268,16 +268,11 @@ class ModuleViewModel : ViewModel() {
                 val guestAccess = fullGuestAccessList?.contains(packageName) ?: false
                 val appScopes = binder?.getModuleScope(packageName)
                     ?.map { PackageID(it.packageName, it.userId) }
-                    ?.sortedWith(compareByDescending<PackageID> {
-                        it.packageName == pkg.packageName
-                    }
-                        .thenBy { it.packageName }
-                    ) ?: emptyList()
+                    ?.sortedPackages()
+                    ?: emptyList()
 
                 ModuleInfo(
                     packageInfo = pkg.toPackageInfoLite(packageManager),
-                    appName = appName,
-                    icon = icon,
                     xposedMinVersion = minVersion,
                     xposedDescription = description,
                     isEnabled = isEnabled,
@@ -301,16 +296,17 @@ class ModuleViewModel : ViewModel() {
                 false
             ).list.filterNotNull()
 
-            val xposedModules = getXposedPackages(packages, packageManager)
             val allApps = packages.map { pkg ->
                 pkg.toPackageInfoLite(packageManager)
             }
+
+            val xposedModules = getXposedPackages(packages, packageManager)
 
             _uiState.update {
                 allModules = xposedModules
                 it.copy(
                     modules = xposedModules.sortedModules().toPersistentList(),
-                    allApps = allApps.toPersistentList()
+                    allApps = allApps.sortedPackages().toPersistentList()
                 )
             }
         }
@@ -378,16 +374,9 @@ class ModuleViewModel : ViewModel() {
         val success = binder?.setModuleScope(packageName, binderScopes) == true
 
         if (success) {
-            val sorted = scopes.sortedWith(compareByDescending<PackageID> {
-                it.packageName == item.packageName
-            }
-                .thenBy { it.packageName }
-            )
-
             updateModule(
                 item.copy(
-                    appScopes = sorted
-                        .toPersistentList()
+                    appScopes = scopes.sortedPackages(item.packageInfo.packageId).toPersistentList()
                 )
             )
         }

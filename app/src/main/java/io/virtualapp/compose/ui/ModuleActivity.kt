@@ -145,11 +145,11 @@ fun AppsScreen(
                 animationSpec = tween(150)
             ) + slideOutHorizontally { it / 2 })
         }
-    }, label = "IfElseTransition", contentKey = { it?.packageName }) { currentModule ->
+    }, label = "IfElseTransition", contentKey = { it?.packageInfo?.packageId }) { currentModule ->
         if (currentModule != null) {
             Scaffold(
                 topBar = {
-                    TopAppBar(title = { Text(currentModule.appName) }, navigationIcon = {
+                    TopAppBar(title = { Text(currentModule.packageInfo.label) }, navigationIcon = {
                         IconButton(onClick = { onIntent.invoke(MainIntent.OnItemClicked(null)) }) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back"
@@ -187,7 +187,7 @@ fun AppsScreen(
                     ) {
                         items(
                             items = state.modules,
-                            key = { it.packageInfo.packageName }) { moduleInfo ->
+                            key = { it.packageInfo.packageId }) { moduleInfo ->
                             XposedListItem(
                                 moduleInfo = moduleInfo,
                                 onClick = { onIntent(MainIntent.OnItemClicked(moduleInfo)) },
@@ -229,9 +229,9 @@ private fun XposedListItem(
                 .alpha(if (enabled) 1f else 0.38f), // Standard M3 disabled opacity for content
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (moduleInfo.icon != null) {
+            if (moduleInfo.packageInfo.icon != null) {
                 Image(
-                    painter = rememberDrawablePainter(moduleInfo.icon),
+                    painter = rememberDrawablePainter(moduleInfo.packageInfo.icon),
                     contentDescription = null,
                     modifier = Modifier.size(48.dp)
                 )
@@ -243,7 +243,7 @@ private fun XposedListItem(
                     .weight(1f)
             ) {
                 Text(
-                    text = moduleInfo.appName,
+                    text = moduleInfo.packageInfo.label,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -253,7 +253,7 @@ private fun XposedListItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "App Version: v${moduleInfo.packageInfo.versionName ?: "N/A"} | Xposed Min API: ${moduleInfo.xposedMinVersion}",
+                    text = "App Version: ${moduleInfo.packageInfo.versionName ?: "N/A"} | Xposed Min API: ${moduleInfo.xposedMinVersion}",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (enabled) {
                         MaterialTheme.colorScheme.primary
@@ -284,16 +284,16 @@ private fun XposedDetailScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (moduleInfo.icon != null) {
+        if (moduleInfo.packageInfo.icon != null) {
             Image(
-                painter = rememberDrawablePainter(moduleInfo.icon),
+                painter = rememberDrawablePainter(moduleInfo.packageInfo.icon),
                 contentDescription = null,
                 modifier = Modifier.size(80.dp)
             )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
-        Text(text = moduleInfo.appName, style = MaterialTheme.typography.headlineSmall)
+        Text(text = moduleInfo.packageInfo.label, style = MaterialTheme.typography.headlineSmall)
         Text(
             text = pkg.packageName,
             style = MaterialTheme.typography.bodyMedium,
@@ -627,9 +627,9 @@ private fun AppScopesSection(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         currentAppScopes.forEach { packageId ->
-                            key(packageId.packageName, packageId.userId) {
+                            key(packageId) {
                                 val appInfo = remember(packageId, allApps) {
-                                    allApps.find { it.packageId.packageName == packageId.packageName }
+                                    allApps.find { it.packageId == packageId  }
                                 } ?: return@forEach
 
                                 AppScopeItem(
@@ -781,7 +781,7 @@ private fun AppScopePickerDialog(
                         .heightIn(max = 350.dp)
                 ) {
                     items(
-                        items = filteredApps, key = { it.packageId.packageName }) { pkg ->
+                        items = filteredApps, key = { it.packageId }) { pkg ->
                         val targetPackageId = pkg.packageId
                         val isChecked = selectedPackageIds.contains(targetPackageId)
                         Row(

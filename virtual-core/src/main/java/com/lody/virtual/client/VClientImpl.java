@@ -65,6 +65,7 @@ import org.matrix.vector.service.ModuleSettings;
 import org.matrix.vector.service.ModuleStore;
 import org.matrix.vector.service.VectorManagerService;
 
+import com.virtualxposed.hook.PackageID;
 import com.virtualxposed.hook.VHookClient;
 import com.virtualxposed.log.client.LogMessage;
 import com.virtualxposed.log.client.VLoggingClient;
@@ -361,7 +362,7 @@ public final class VClientImpl extends IVClient.Stub {
             ClassLoader originClassLoader = context.getClassLoader();
             ExposedBridge.initOnce(context, data.appInfo, originClassLoader);
 
-            Set<String> enabledModules = getEnabledModules(packageName);
+            Set<String> enabledModules = getEnabledModules(packageName, myUserId());
             // TODO remove dependency on isXposedEnabled
             NativeEngine.hookDlOpen();
 
@@ -370,7 +371,8 @@ public final class VClientImpl extends IVClient.Stub {
 
             for (InstalledAppInfo app : installedApps) {
                 if (enabledModules.contains(app.packageName)) {
-                    PackageInfo packageInfo = app.getPackageInfo(myUserId());
+                    // Modules are always in user 0
+                    PackageInfo packageInfo = app.getPackageInfo(0);
                     VHookClient.get().registerLoadedModule(packageInfo);
                     ExposedBridge.loadModule(app.apkPath, app.getOdexFile().getParent(), app.libPath,
                             data.appInfo, originClassLoader);
@@ -446,7 +448,7 @@ public final class VClientImpl extends IVClient.Stub {
     }
 
     @NonNull
-    private static Set<String> getEnabledModules(String packageName) {
+    private static Set<String> getEnabledModules(String packageName, int userId) {
         ModuleStore store = VectorManagerService.getCurrentStore();
         if (store == null) {
             return Set.of();
@@ -466,10 +468,9 @@ public final class VClientImpl extends IVClient.Stub {
             ModuleSettings moduleSettings = store.getModuleSettings().get(module);
 
             if (moduleSettings != null) {
-                Set<String> enabledModuleScopes = moduleSettings.getAppScopes();
-                for (String enabledModuleScope : enabledModuleScopes) {
-                    // TODO handle user ID
-                    if (Objects.equals(enabledModuleScope, packageName)) {
+                Set<PackageID> enabledModuleScopes = moduleSettings.getAppScopes();
+                for (PackageID enabledModuleScope : enabledModuleScopes) {
+                    if (Objects.equals(enabledModuleScope.getPackageName(), packageName) && enabledModuleScope.getUserId() == userId) {
                         modulesToLoad.add(module);
                     }
                 }

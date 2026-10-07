@@ -5,11 +5,11 @@ import android.content.pm.PackageInfo
 import android.content.pm.ResolveInfo
 import android.os.ParcelFileDescriptor
 import com.lody.virtual.client.core.VirtualCore
-import com.lody.virtual.client.ipc.VPackageManager
 import com.lody.virtual.os.VUserManager
 import com.lody.virtual.server.am.BroadcastSystem
 import com.lody.virtual.server.am.VActivityManagerService
 import com.lody.virtual.server.pm.VAppManagerService
+import com.virtualxposed.hook.PackageID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -30,7 +30,6 @@ import org.matrix.vector.ipc.ScopeEntry
 import rikka.parcelablelist.ParcelableListSlice
 import timber.log.Timber
 import java.io.File
-import kotlin.collections.get
 import kotlin.time.Duration.Companion.milliseconds
 
 abstract class IVectorManagerService : IManagerService.Stub() {
@@ -83,8 +82,9 @@ class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() 
             .launchIn(scope)
     }
 
+    // There is only one module package across all users.
     private val _enabledModules = MutableStateFlow<Set<String>>(emptySet())
-    private val _moduleAppScopes = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+    private val _moduleAppScopes = MutableStateFlow<Map<String, Set<PackageID>>>(emptyMap())
     private val _hookScopes = MutableStateFlow<Map<String, List<HookScope>>>(emptyMap())
     private val _guestAccess = MutableStateFlow<Map<String, Boolean>>(emptyMap())
 
@@ -144,8 +144,14 @@ class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() 
 
     override fun getModuleScope(packageName: String?): List<ScopeEntry?> {
         if (packageName == null) return emptyList()
-        val scope = ((_moduleAppScopes.value[packageName]) ?: emptySet()) + packageName
-        return scope.map { ScopeEntry().apply { this.packageName = it } }
+        // Modules are always in user 0
+        val packageID = PackageID(packageName, 0)
+
+        val scope = ((_moduleAppScopes.value[packageName]) ?: emptySet()) + packageID
+        return scope.map { ScopeEntry().apply {
+            this.packageName = it.packageName
+            this.userId = it.userId
+        } }
     }
 
     override fun setModuleScope(
@@ -154,8 +160,9 @@ class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() 
     ): Boolean {
         val fixedScope = scope?.filterNotNull() ?: return false
         if (packageName == null) return false
-        // TODO Fix missing userId
-        val newScope = mapOf(packageName to fixedScope.map { it.packageName }.toSet())
+
+        val newScope =
+            mapOf(packageName to fixedScope.map { PackageID(it.packageName, it.userId) }.toSet())
         _moduleAppScopes.update { scopes ->
             scopes + newScope
         }
@@ -219,7 +226,12 @@ class VectorManagerServiceImpl(val backingFile: File) : IVectorManagerService() 
         flags: Int,
         filterNoProcess: Boolean
     ): ParcelableListSlice<PackageInfo?> {
-        val packages = VPackageManager.get().getInstalledPackages(flags, 0)
+        val packages = VirtualCore.get().getInstalledApps(0).mapNotNull { app ->
+            app.installedUsers.map {
+                app.getPackageInfo(it, flags)
+            }
+        }.flatten()
+
         return ParcelableListSlice(packages)
     }
 

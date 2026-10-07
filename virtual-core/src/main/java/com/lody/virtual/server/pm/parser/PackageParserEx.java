@@ -27,6 +27,7 @@ import com.lody.virtual.helper.compat.PackageParserCompat;
 import com.lody.virtual.helper.utils.FileUtils;
 import com.lody.virtual.helper.utils.VLog;
 import com.lody.virtual.os.VEnvironment;
+import com.lody.virtual.os.VUserHandle;
 import com.lody.virtual.server.pm.PackageSetting;
 import com.lody.virtual.server.pm.PackageUserState;
 
@@ -226,8 +227,7 @@ public class PackageParserEx {
                 Signature[] pastSigningCertificates = mirror.android.content.pm.PackageParser.SigningDetails.pastSigningCertificates.get(signingDetails);
                 signingDetails = mirror.android.content.pm.SigningDetails.ctor.newInstance(signatures, signatureSchemeVersion, pastSigningCertificates);
                 cache.signingInfo = mirror.android.content.pm.PackageParser.SigningInfoTiramisu.ctor.newInstance(signingDetails);
-            }
-            else {
+            } else {
                 cache.signingInfo = mirror.android.content.pm.PackageParser.SigningInfo.ctor.newInstance(signingDetails);
             }
         }
@@ -296,20 +296,22 @@ public class PackageParserEx {
         }
     }
 
-    private static void initApplicationAsUser(ApplicationInfo ai, int userId) {
+    private static void initApplicationAsUser(ApplicationInfo ai, int appId, int userId) {
         ai.dataDir = VEnvironment.getDataUserPackageDirectory(userId, ai.packageName).getPath();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             ApplicationInfoL.scanSourceDir.set(ai, ai.dataDir);
             ApplicationInfoL.scanPublicSourceDir.set(ai, ai.dataDir);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            if(Build.VERSION.SDK_INT < 26) {
+            if (Build.VERSION.SDK_INT < 26) {
                 ApplicationInfoN.deviceEncryptedDataDir.set(ai, ai.dataDir);
                 ApplicationInfoN.credentialEncryptedDataDir.set(ai, ai.dataDir);
             }
             ApplicationInfoN.deviceProtectedDataDir.set(ai, ai.dataDir);
             ApplicationInfoN.credentialProtectedDataDir.set(ai, ai.dataDir);
         }
+
+        ai.uid = VUserHandle.getUid(userId, appId);
     }
 
     private static void addOwner(VPackage p) {
@@ -464,6 +466,13 @@ public class PackageParserEx {
         if (!state.installed || state.hidden) {
             return true;
         }
+
+        int appId = p.mExtras.appId;
+        int uid = VUserHandle.getUid(userId, appId);
+        if (uid != p.applicationInfo.uid) {
+            return true;
+        }
+
         return (flags & PackageManager.GET_META_DATA) != 0
                 && (metaData != null || p.mAppMetaData != null);
     }
@@ -476,7 +485,7 @@ public class PackageParserEx {
         }
 
         if (!copyNeeded(flags, p, state, null, userId)) {
-            initApplicationAsUser(p.applicationInfo, userId);
+            initApplicationAsUser(p.applicationInfo, p.mExtras.appId, userId);
             return p.applicationInfo;
         }
 
@@ -485,7 +494,8 @@ public class PackageParserEx {
         if ((flags & PackageManager.GET_META_DATA) != 0) {
             ai.metaData = p.mAppMetaData;
         }
-        initApplicationAsUser(ai, userId);
+
+        initApplicationAsUser(ai, p.mExtras.appId, userId);
         return ai;
     }
 
