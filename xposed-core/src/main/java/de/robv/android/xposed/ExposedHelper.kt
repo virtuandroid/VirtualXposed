@@ -99,6 +99,12 @@ object ExposedHelper {
         return hookManager.getOriginalMethod(method)?.invoke(thisObject, *args)
     }
 
+    private val isHooked = object : ThreadLocal<Boolean>() {
+        override fun initialValue(): Boolean {
+            return false
+        }
+    }
+
     @Suppress("NOTHING_TO_INLINE")
     // We want this inlined to prevent security bypasses with reflection.
     private inline fun hookMember(
@@ -107,9 +113,6 @@ object ExposedHelper {
         callback: XC_MethodHook
     ): XC_MethodHook.Unhook {
         val hooker = hookManager.hook(target) { oldMethod, args ->
-            val params = MethodHookParam()
-            Timber.d("Executing hooked method: ${oldMethod.name}")
-
             // TODO Checks for:
             // - Abstract classes
             // - Hooking this code
@@ -117,6 +120,21 @@ object ExposedHelper {
             val isStatic = Modifier.isStatic(target.modifiers)
             val thisObject = if (isStatic) null else args[0]
             val actualArgs = if (isStatic) args else args.sliceArray(1 until args.size)
+
+            if (isHooked.get() == true) {
+                val realResult = oldMethod.invoke(thisObject, *actualArgs)
+                val returnValue = if (oldMethod.returnType == Void.TYPE) {
+                    Unit
+                } else {
+                    realResult
+                }
+
+                return@hook returnValue
+            }
+            isHooked.set(true)
+
+            val params = MethodHookParam()
+            Timber.d("Executing hooked method: ${oldMethod.name}")
 
             params.args = actualArgs
             params.method = oldMethod
@@ -135,11 +153,12 @@ object ExposedHelper {
                 VLoggingClient.get().log(
                     LogMessage.HookReturnRewrite(target, modulePackage)
                 )
+
+                isHooked.set(false)
                 return@hook params.result
             }
 
             val newArguments = params.args.map { it to it?.hashCode() }
-
 
             var argRewrite = false
 
@@ -206,6 +225,7 @@ object ExposedHelper {
                 params.result
             }
 
+            isHooked.set(false)
             finalResult ?: Unit
         }
 
