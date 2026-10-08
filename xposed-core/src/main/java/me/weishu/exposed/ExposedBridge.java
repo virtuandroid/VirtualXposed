@@ -38,6 +38,7 @@ public class ExposedBridge {
     private static Context appContext;
     private static String currentPackage;
     private static boolean SYSTEM_CLASSLOADER_INJECT = false;
+
     /**
      * Module load result
      */
@@ -120,7 +121,7 @@ public class ExposedBridge {
             return ModuleLoadResult.IGNORED;
         }
 
-        Timber.i("Loading modules from: %s for process: %s",  moduleApkPath,  currentApplicationInfo.processName );
+        Timber.i("Loading modules from: %s for process: %s", moduleApkPath, currentApplicationInfo.processName);
 
         if (!new File(moduleApkPath).exists()) {
             Timber.e("Module %s does not exist", moduleApkPath);
@@ -177,16 +178,23 @@ public class ExposedBridge {
 
                     if (moduleInstance instanceof IXposedHookLoadPackage) {
                         // hookLoadPackage(new IXposedHookLoadPackage.Wrapper((IXposedHookLoadPackage) moduleInstance));
-                        IXposedHookLoadPackage.Wrapper wrapper = new IXposedHookLoadPackage.Wrapper((IXposedHookLoadPackage) moduleInstance);
-                        XposedBridge.CopyOnWriteSortedSet<XC_LoadPackage> xc_loadPackageCopyOnWriteSortedSet = new XposedBridge.CopyOnWriteSortedSet<>();
-                        xc_loadPackageCopyOnWriteSortedSet.add(wrapper);
-                        XC_LoadPackage.LoadPackageParam lpparam = new XC_LoadPackage.LoadPackageParam(xc_loadPackageCopyOnWriteSortedSet);
-                        lpparam.packageName = currentApplicationInfo.packageName;
-                        lpparam.processName = currentApplicationInfo.processName;
-                        lpparam.classLoader = appClassLoaderWithXposed;
-                        lpparam.appInfo = currentApplicationInfo;
-                        lpparam.isFirstApplication = true;
-                        XC_LoadPackage.callAll(lpparam);
+                        ExposedHelper.INSTANCE.isHooked().set(true);
+                        try {
+                            IXposedHookLoadPackage.Wrapper wrapper = new IXposedHookLoadPackage.Wrapper((IXposedHookLoadPackage) moduleInstance);
+                            XposedBridge.CopyOnWriteSortedSet<XC_LoadPackage> xc_loadPackageCopyOnWriteSortedSet = new XposedBridge.CopyOnWriteSortedSet<>();
+                            xc_loadPackageCopyOnWriteSortedSet.add(wrapper);
+                            XC_LoadPackage.LoadPackageParam lpparam = new XC_LoadPackage.LoadPackageParam(xc_loadPackageCopyOnWriteSortedSet);
+                            lpparam.packageName = currentApplicationInfo.packageName;
+                            lpparam.processName = currentApplicationInfo.processName;
+                            lpparam.classLoader = appClassLoaderWithXposed;
+                            lpparam.appInfo = currentApplicationInfo;
+                            lpparam.isFirstApplication = true;
+                            XC_LoadPackage.callAll(lpparam);
+                        } catch (Throwable t) {
+                            Timber.e(t);
+                        } finally {
+                            ExposedHelper.INSTANCE.isHooked().set(false);
+                        }
                     }
 
                     if (moduleInstance instanceof IXposedHookInitPackageResources) {

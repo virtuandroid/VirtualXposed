@@ -99,7 +99,8 @@ object ExposedHelper {
         return hookManager.getOriginalMethod(method)?.invoke(thisObject, *args)
     }
 
-    private val isHooked = object : ThreadLocal<Boolean>() {
+    // Maybe switch to lambda function for more safety?
+    val isHooked = object : ThreadLocal<Boolean>() {
         override fun initialValue(): Boolean {
             return false
         }
