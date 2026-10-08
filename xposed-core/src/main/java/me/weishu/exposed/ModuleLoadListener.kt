@@ -1,12 +1,20 @@
-package me.weishu.exposed;
+package me.weishu.exposed
 
-import android.content.pm.ApplicationInfo;
+import android.content.pm.ApplicationInfo
 
 /**
  * author: weishu on 18/1/14.
  */
+interface ModuleLoadListener {
+    fun onLoadingModule(
+        moduleClassName: String?,
+        applicationInfo: ApplicationInfo?,
+        appClassLoader: ClassLoader?
+    )
 
-public interface ModuleLoadListener {
-    void onLoadingModule(String moduleClassName, ApplicationInfo applicationInfo, ClassLoader appClassLoader);
-    void onModuleLoaded(String moduleClassName, ApplicationInfo applicationInfo, ClassLoader appClassLoader);
+    fun onModuleLoaded(
+        moduleClassName: String?,
+        applicationInfo: ApplicationInfo?,
+        appClassLoader: ClassLoader?
+    )
 }

@@ -361,9 +361,10 @@ public final class VClientImpl extends IVClient.Stub {
             Timber.i("Xposed is enabled");
             ClassLoader originClassLoader = context.getClassLoader();
             ExposedBridge.initOnce(context, data.appInfo, originClassLoader);
+            ModuleStore store = VectorManagerService.getCurrentStore();
 
-            Set<String> enabledModules = getEnabledModules(packageName, myUserId());
-            // TODO remove dependency on isXposedEnabled
+            Set<String> enabledModules = getEnabledModules(store, packageName, myUserId());
+            // TODO remove hookDlOpen dependency on isXposedEnabled
             NativeEngine.hookDlOpen();
 
             VectorClient.initVectorManager(context, data.appInfo, originClassLoader);
@@ -374,8 +375,17 @@ public final class VClientImpl extends IVClient.Stub {
                     // Modules are always in user 0
                     PackageInfo packageInfo = app.getPackageInfo(0);
                     VHookClient.get().registerLoadedModule(packageInfo);
+
+                    boolean fullHostAccess = false;
+
+                    if (store != null) {
+                        ModuleSettings moduleSettings = store.getModuleSettings().get(app.packageName);
+                        if (moduleSettings != null) {
+                            fullHostAccess = moduleSettings.getGuestVirtualizationAllowed();
+                        }
+                    }
                     ExposedBridge.loadModule(app.apkPath, app.getOdexFile().getParent(), app.libPath,
-                            data.appInfo, originClassLoader);
+                            data.appInfo, originClassLoader, fullHostAccess);
                 }
             }
         } else {
@@ -448,8 +458,7 @@ public final class VClientImpl extends IVClient.Stub {
     }
 
     @NonNull
-    private static Set<String> getEnabledModules(String packageName, int userId) {
-        ModuleStore store = VectorManagerService.getCurrentStore();
+    private static Set<String> getEnabledModules(ModuleStore store, String packageName, int userId) {
         if (store == null) {
             return Set.of();
         }

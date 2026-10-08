@@ -116,7 +116,7 @@ public class ExposedBridge {
     }
 
     public static ModuleLoadResult loadModule(final String moduleApkPath, String moduleOdexDir, String moduleLibPath,
-                                              final ApplicationInfo currentApplicationInfo, ClassLoader appClassLoader) {
+                                              final ApplicationInfo currentApplicationInfo, ClassLoader appClassLoader, boolean fullHostAccess) {
         if (filterApplication(currentApplicationInfo)) {
             return ModuleLoadResult.IGNORED;
         }
@@ -140,7 +140,11 @@ public class ExposedBridge {
             // replace failed, just wrap.
             ClassLoader hostClassLoader = ExposedBridge.class.getClassLoader();
             appClassLoaderWithXposed = getAppClassLoaderWithXposed(appClassLoader);
-            mcl = new DexClassLoader(moduleApkPath, moduleOdexDir, moduleLibPath, getXposedClassLoader(hostClassLoader));
+            if (fullHostAccess) {
+                mcl = new DexClassLoader(moduleApkPath, moduleOdexDir, moduleLibPath, hostClassLoader);
+            } else {
+                mcl = new DexClassLoader(moduleApkPath, moduleOdexDir, moduleLibPath, getXposedClassLoader(hostClassLoader));
+            }
             // ClassLoader mcl = new DexClassLoader(moduleApkPath, moduleOdexDir, moduleLibPath, hostClassLoader);
         }
 
