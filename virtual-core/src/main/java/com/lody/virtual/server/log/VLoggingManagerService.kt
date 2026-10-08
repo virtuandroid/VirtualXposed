@@ -44,8 +44,12 @@ object VLoggingManagerService : IVLoggingService.Stub() {
         }
     }
 
-    private val logFile: File by lazy {
+    val logDir: String by lazy {
         val context = VirtualCore.get().context
+        "${context.cacheDir.absolutePath}/logs"
+    }
+
+    private val logFile: File by lazy {
         val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
 
         val customFormat = LocalDateTime.Format {
@@ -54,7 +58,7 @@ object VLoggingManagerService : IVLoggingService.Stub() {
 
         val logTime = now.format(customFormat)
         // Cache dir makes it easy to clean the log files
-        val file = File("${context.cacheDir.absolutePath}/logs", "$logTime.jsonl")
+        val file = File(logDir, "$logTime.jsonl")
         file.parentFile?.mkdirs()
         file.createNewFile()
         file

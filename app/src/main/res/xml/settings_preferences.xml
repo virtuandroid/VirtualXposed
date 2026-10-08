@@ -34,6 +34,11 @@
         android:title="@string/settings_task_manage_text" />
 
     <Preference
+        android:key="settings_log_export"
+        android:persistent="false"
+        android:title="@string/settings_export_log_text" />
+
+    <Preference
         android:key="settings_about"
         android:persistent="false"
         android:title="@string/settings_about_text" />

@@ -147,6 +147,7 @@
     <string name="install_package_version_tips">You have chosen an existing app, \n(Installed version %1$s, selected version: %2$s). Install it?</string>
     <string name="settings_add_app_summary">Please add both the app and the Xposed module to VirtualXposed first, otherwise the Xposed module won\'t take effect.</string>
     <string name="advanced_settings_title">Advanced Settings</string>
+    <string name="settings_export_log_text">Export latest session log</string>
     <string name="advance_settings_hide_settings">Hide settings button on desktop</string>
     <string name="advance_settings_disable_installer">Disable apk installer for system</string>
     <string name="advance_settings_hide_settings_summary">If you can enter settings by the menu key on main activity, you can hide this; you may not be able to enter settings otherwise! \n(Restart VirtualXposed to take effect)</string>
