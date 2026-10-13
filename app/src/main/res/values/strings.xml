@@ -190,6 +190,11 @@
     <string name="donate_bitconins_tips">My bitconins address has been copied to clipboard:)</string>
     <string name="advance_settings_disable_xposed_summary">When disabled, all Xposed module won\'t take effect.</string>
     <string name="advance_settings_disable_xposed">Disable Xposed</string>
+    <string name="advance_settings_fingerprint_action">Fingerprint inconsistency action</string>
+    <string name="advance_settings_fingerprint_action_summary">Manage host actions when the device fingerprint has been altered</string>
+    <string name="advance_settings_log">Send log message</string>
+    <string name="advance_settings_toast">Show toast</string>
+    <string name="advance_settings_kill">Kill guest app</string>
     <string name="prepare_xposed_installer">Preparing Xposed environment, please wait…</string>
     <string name="settings_file_manage_text">File Manager</string>
     <string name="install_file_manager_tips">File Manager is supported by Amaze File Manager, download(about 3M) and install it now?</string>

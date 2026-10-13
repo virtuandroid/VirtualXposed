@@ -26,22 +26,25 @@ import kotlinx.serialization.json.Json
 class LogMessageHolder private constructor(
     val logMessage: LogMessage?,
     val pid: Int,
-    // val hostPid: Int,
-    // TODO Handle cloned package names
     val packageName: String?,
     val timestamp: Long,
-    val dangerous: Boolean
+    val dangerous: Boolean,
+    val userId: Int
 ) {
     class Builder(private val logMessage: LogMessage) {
         private var pid: Int = VBinder.getCallingPid()
+        private var userId: Int = VBinder.getCallingUserHandle().identifier
 
-        // private var hostPid: Int = Os.getpid()
-        private var packageName: String? =
-            VPackageManagerService.get().getNameForUid(VBinder.getCallingUid())
+        private var packageName: String? = VPackageManagerService.get().getNameForUid(VBinder.getCallingUid())
         private var timestamp: Long = System.currentTimeMillis()
 
         fun setPid(pid: Int): Builder {
             this.pid = pid
+            return this
+        }
+
+        fun setUserId(uid: Int): Builder {
+            this.userId = uid
             return this
         }
 
@@ -155,7 +158,7 @@ class LogMessageHolder private constructor(
 
                 else -> false
             }
-            return LogMessageHolder(logMessage, pid, packageName, timestamp, dangerous)
+            return LogMessageHolder(logMessage, pid, packageName, timestamp, dangerous, userId)
         }
     }
 

@@ -29,7 +29,6 @@ public class NsdServiceStub extends BinderInvocationProxy {
 
         public Object call(Object who, Method method, Object... args) throws Throwable {
             replaceFirstAppPkg(args);
-            System.out.println("REGISTER CALL TO " + Arrays.toString(args));
             return super.call(who, method, args);
         }
 

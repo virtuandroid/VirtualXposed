@@ -4,7 +4,7 @@
     <Preference
         android:key="advance_settings_install_gms"
         android:persistent="false"
-        android:title="@string/advance_settings_install_gms"/>
+        android:title="@string/advance_settings_install_gms" />
 
     <SwitchPreference
         android:defaultValue="false"
@@ -12,6 +12,15 @@
         android:persistent="true"
         android:summary="@string/advance_settings_disable_xposed_summary"
         android:title="@string/advance_settings_disable_xposed" />
+
+    <ListPreference
+        android:key="advance_settings_fingerprint_action"
+        android:defaultValue="0"
+        android:entries="@array/fingerprint_names"
+        android:entryValues="@array/fingerprint_values"
+        android:summary="@string/advance_settings_fingerprint_action_summary"
+        android:title="@string/advance_settings_fingerprint_action">
+    </ListPreference>
 
     <SwitchPreference
         android:defaultValue="false"

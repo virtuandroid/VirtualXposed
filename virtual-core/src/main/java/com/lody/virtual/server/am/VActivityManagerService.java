@@ -759,6 +759,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
         LogMessage message = new LogMessage.AppDeath();
         LogMessageHolder holder = new LogMessageHolder.Builder(message)
                 .setPackageName(record.processName)
+                .setUserId(record.userId)
                 .setPid(record.pid)
                 .build();
 

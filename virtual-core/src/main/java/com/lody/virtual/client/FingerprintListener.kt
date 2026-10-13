@@ -5,8 +5,10 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import androidx.annotation.WorkerThread
+import com.lody.virtual.server.log.VLoggingManagerService
 import com.virtualxposed.log.client.LogMessage
 import com.virtualxposed.log.client.VLoggingClient
+import com.virtualxposed.log.server.IVLoggingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

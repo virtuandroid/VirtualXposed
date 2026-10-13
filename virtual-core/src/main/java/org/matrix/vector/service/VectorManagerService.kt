@@ -4,7 +4,7 @@ import com.lody.virtual.client.core.VirtualCore
 import org.matrix.vector.ipc.IManagerService
 import java.io.File
 
-class VectorManagerService {
+object VectorManagerService {
     @Synchronized
     fun start() {
         if (_binder == null) {
@@ -14,26 +14,27 @@ class VectorManagerService {
         }
     }
 
-    companion object {
-        private var _binder: VectorManagerServiceImpl? = null
+    @JvmStatic
+    fun get() = this
 
-        /** Shortcut for calls in the main process. Does not bind the service if not called before! */
-        fun getManagerServer(): IVectorManagerService? {
-            return if (VirtualCore.get().isServerProcess) {
-                _binder
-            } else {
-                null
-            }
-        }
+    private var _binder: VectorManagerServiceImpl? = null
 
-        private fun getBackingFile(): File {
-            return File(VirtualCore.get().context.applicationContext.filesDir, "modules.json")
+    /** Shortcut for calls in the main process. Does not bind the service if not called before! */
+    fun getManagerServer(): IVectorManagerService? {
+        return if (VirtualCore.get().isServerProcess) {
+            _binder
+        } else {
+            null
         }
+    }
 
-        @JvmStatic
-        @Synchronized
-        fun getCurrentStore(): ModuleStore? {
-            return PersistentModuleStore.getStore(getBackingFile())
-        }
+    private fun getBackingFile(): File {
+        return File(VirtualCore.get().context.applicationContext.filesDir, "modules.json")
+    }
+
+    @JvmStatic
+    @Synchronized
+    fun getCurrentStore(): ModuleStore? {
+        return PersistentModuleStore.getStore(getBackingFile())
     }
 }

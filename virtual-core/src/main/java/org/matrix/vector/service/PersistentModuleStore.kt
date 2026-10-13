@@ -26,43 +26,9 @@ data class ModuleSettings(
     val hookScopes: List<HookScope>
 )
 
-object PersistentModuleStore {
-    private val json = Json {
-        ignoreUnknownKeys = true
-        allowStructuredMapKeys = true
-    }
-
-    fun writeStore(backingFile: File, store: ModuleStore) {
-        runCatching {
-            Timber.d("Saving store: $store")
-            val storeJson = json.encodeToString(store)
-            backingFile.writeText(storeJson)
-        }.onFailure { e ->
-            Timber.e(e, "Failed to write store")
-        }
-    }
-
-    @Throws
-    private fun parseStore(backingFile: File): ModuleStore {
-        val text = backingFile.readText()
-        return json.decodeFromString<ModuleStore>(text)
-    }
-
-    fun getStore(backingFile: File): ModuleStore? {
-        return runCatching {
-            if (!backingFile.exists()) {
-                backingFile.parentFile?.mkdirs()
-                backingFile.createNewFile()
-                val store = ModuleStore()
-                writeStore(backingFile, store)
-                return store
-            }
-
-            return parseStore(backingFile)
-        }.onFailure { e ->
-            Timber.e(e, "Failed to read store!")
-        }.getOrElse {
-            null
-        }
+object PersistentModuleStore : GenericStore<ModuleStore>(ModuleStore.serializer()) {
+    override fun writeBlankStore(backingFile: File) {
+        val store = ModuleStore()
+        writeStore(backingFile, store)
     }
 }

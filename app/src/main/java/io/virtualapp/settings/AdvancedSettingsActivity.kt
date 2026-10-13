@@ -1,211 +1,170 @@
-package io.virtualapp.settings;
+package io.virtualapp.settings
 
-import android.content.ComponentName;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.os.Bundle;
-import android.preference.PreferenceFragment;
-import android.preference.SwitchPreference;
-import android.widget.Toast;
+import android.content.ComponentName
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.widget.Toast
+import androidx.preference.ListPreference
+import androidx.preference.Preference
+import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.SwitchPreference
+import com.android.launcher3.LauncherFiles
+import com.google.android.apps.nexuslauncher.SettingsActivity
+import com.lody.virtual.client.env.Constants
+import com.virtualxposed.log.client.VLoggingClient
+import io.virtualapp.VCommends
+import io.virtualapp.abs.ui.VActivity
+import io.virtualapp.gms.FakeGms
+import java.io.IOException
 
-import com.android.launcher3.LauncherFiles;
-import com.lody.virtual.client.env.Constants;
+class AdvancedSettingsActivity : VActivity() {
 
-import io.virtualapp.R;
-import io.virtualapp.VCommends;
-import io.virtualapp.abs.ui.VActivity;
-import io.virtualapp.gms.FakeGms;
-
-import java.io.File;
-import java.io.IOException;
-
-public class AdvancedSettingsActivity extends VActivity {
-
-    private static final String INSTALL_GMS_PREFERENCE = "advance_settings_install_gms";
-    private static final String FILE_MANAGE = "settings_file_manage";
-    private static final String DISABLE_XPOSED = "advance_settings_disable_xposed";
-    private static final String DISABLE_RESIDENT_NOTIFICATION = "advance_settings_disable_resident_notification";
-    private static final String HIDE_SETTINGS_PREFERENCE = "advance_settings_hide_settings";
-    private static final String ALLOW_FAKE_SIGNATURE = "advance_settings_allow_fake_signature";
-    private static final String DISABLE_INSTALLER_PREFERENCE = "advance_settings_disable_installer";
-    public static final String ENABLE_LAUNCHER = "advance_settings_enable_launcher";
-    public static final String DIRECTLY_BACK_PREFERENCE = "advance_settings_directly_back";
-    private static final String DESKTOP_SETTINGS_PREFERENCE = "settings_desktop";
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
         if (savedInstanceState == null) {
-            // Display the fragment as the main content.
-            getFragmentManager()
+            supportFragmentManager
                 .beginTransaction()
-                .replace(android.R.id.content, new AdvancedSettingsFragment())
-                .commit();
+                .replace(android.R.id.content, AdvancedSettingsFragment())
+                .commit()
         }
     }
 
     /**
      * This fragment shows the launcher preferences.
      */
-    public static class AdvancedSettingsFragment extends PreferenceFragment {
+    class AdvancedSettingsFragment : PreferenceFragmentCompat() {
 
-        @Override
-        public void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            getPreferenceManager().setSharedPreferencesName(LauncherFiles.SHARED_PREFERENCES_KEY);
-            addPreferencesFromResource(R.xml.advanced_settings_preferences);
+        override fun onCreate(savedInstanceState: Bundle?) {
+            super.onCreate(savedInstanceState)
+            preferenceManager.setSharedPreferencesName(LauncherFiles.SHARED_PREFERENCES_KEY)
+            addPreferencesFromResource(io.virtualapp.R.xml.advanced_settings_preferences)
 
-            findPreference(INSTALL_GMS_PREFERENCE).setOnPreferenceClickListener(preference -> {
-                final boolean alreadyInstalled = FakeGms.isAlreadyInstalled(getActivity());
-                if (alreadyInstalled) {
-                    FakeGms.uninstallGms(getActivity());
-                } else {
-                    FakeGms.installGms(getActivity());
-                }
-                return true;
-            });
-
-            final SwitchPreference disableXposed = (SwitchPreference)
-                findPreference(DISABLE_XPOSED);
-            disableXposed.setOnPreferenceChangeListener((preference, newValue) -> {
-                if (!(newValue instanceof Boolean)) {
-                    return false;
-                }
-
-                final boolean on = (boolean) newValue;
-
-                // 文件不存在代表是保守模式
-                final File disableXposedFile = getActivity().getFileStreamPath(".disable_xposed");
-                if (on) {
-                    boolean success;
-                    try {
-                        success = disableXposedFile.createNewFile();
-                    } catch (IOException e) {
-                        success = false;
+            findPreference<Preference>(INSTALL_GMS_PREFERENCE)?.onPreferenceClickListener =
+                Preference.OnPreferenceClickListener {
+                    if (FakeGms.isAlreadyInstalled(activity)) {
+                        FakeGms.uninstallGms(activity)
+                    } else {
+                        FakeGms.installGms(activity)
                     }
-                    return success;
-                } else {
-                    return !disableXposedFile.exists() || disableXposedFile.delete();
-                }
-            });
-
-            final SwitchPreference disableResidentNotification = (SwitchPreference)
-                findPreference(DISABLE_RESIDENT_NOTIFICATION);
-            disableResidentNotification.setOnPreferenceChangeListener(((preference, newValue) -> {
-                if (!(newValue instanceof Boolean)) {
-                    return false;
+                    true
                 }
 
-                final boolean on = (boolean) newValue;
-
-                final File flag = getActivity().getFileStreamPath(Constants.NO_NOTIFICATION_FLAG);
-                if (on) {
-                    boolean success;
-                    try {
-                        success = flag.createNewFile();
-                    } catch (IOException e) {
-                        success = false;
-                    }
-                    return success;
-                } else {
-                    return !flag.exists() || flag.delete();
-                }
-            }));
-
-            final SwitchPreference allowFakeSignature = (SwitchPreference)
-                findPreference(ALLOW_FAKE_SIGNATURE);
-            allowFakeSignature.setOnPreferenceChangeListener((preference, newValue) -> {
-                if (!(newValue instanceof Boolean)) {
-                    return false;
+            val fingerprint = findPreference<ListPreference>(FINGERPRINT_INCONSISTENT)
+            fingerprint?.value = VLoggingClient.get().getFingerprintAction()?.toString()
+            fingerprint?.onPreferenceChangeListener =
+                Preference.OnPreferenceChangeListener { _, k ->
+                    val key = (k as? Int) ?: (k as? String)?.toIntOrNull() ?: return@OnPreferenceChangeListener false
+                    val success = VLoggingClient.get().setFingerprintAction(key)
+                    return@OnPreferenceChangeListener success
                 }
 
-                final boolean on = (boolean) newValue;
-                final File flag = getActivity().getFileStreamPath(Constants.FAKE_SIGNATURE_FLAG);
-                if (on) {
-                    boolean success;
-                    try {
-                        success = flag.createNewFile();
-                    } catch (IOException e) {
-                        success = false;
-                    }
-                    return success;
-                } else {
-                    return !flag.exists() || flag.delete();
-                }
-            });
+            setupFileFlagPreference(DISABLE_XPOSED, ".disable_xposed")
+            setupFileFlagPreference(DISABLE_RESIDENT_NOTIFICATION, Constants.NO_NOTIFICATION_FLAG)
+            setupFileFlagPreference(ALLOW_FAKE_SIGNATURE, Constants.FAKE_SIGNATURE_FLAG)
 
-            final SwitchPreference disableInstaller = (SwitchPreference)
-                findPreference(DISABLE_INSTALLER_PREFERENCE);
-            disableInstaller.setOnPreferenceChangeListener((preference, newValue) -> {
-                if (!(newValue instanceof Boolean)) {
-                    return false;
-                }
-                try {
-                    final boolean disable = (boolean) newValue;
-                    final PackageManager packageManager = getActivity().getPackageManager();
-                    packageManager.setComponentEnabledSetting(
-                            new ComponentName(getActivity().getPackageName(), "vxp.installer"),
-                            !disable
-                                ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                                : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP);
-                    return true;
-                } catch (Throwable ignored) {
-                    return false;
-                }
-            });
+            setupComponentStatePreference(
+                DISABLE_INSTALLER_PREFERENCE,
+                "vxp.installer"
+            ) { disable ->
+                if (!disable) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            }
 
-            final SwitchPreference enableLauncher = (SwitchPreference)
-                findPreference(ENABLE_LAUNCHER);
-            enableLauncher.setOnPreferenceChangeListener((preference, newValue) -> {
-                if (!(newValue instanceof Boolean)) {
-                    return false;
-                }
-                try {
-                    final boolean enable = (boolean) newValue;
-                    final PackageManager packageManager = getActivity().getPackageManager();
-                    packageManager.setComponentEnabledSetting(
-                            new ComponentName(getActivity().getPackageName(), "vxp.launcher"),
-                            enable
-                                ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                                : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP);
-                    return true;
-                } catch (Throwable ignored) {
-                    return false;
-                }
-            });
+            setupComponentStatePreference(ENABLE_LAUNCHER, "vxp.launcher") { enable ->
+                if (enable) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            }
 
-            findPreference(DESKTOP_SETTINGS_PREFERENCE).setOnPreferenceClickListener(preference -> {
-                startActivity(new Intent(getActivity(),
-                            com.google.android.apps.nexuslauncher.SettingsActivity.class));
-                return false;
-            });
+            // Desktop Settings
+            findPreference<Preference>(DESKTOP_SETTINGS_PREFERENCE)?.onPreferenceClickListener =
+                Preference.OnPreferenceClickListener {
+                    startActivity(Intent(activity, SettingsActivity::class.java))
+                    false
+                }
 
-            if (android.os.Build.VERSION.SDK_INT < 25) {
-                // Android NR1 below do not need this.
-                getPreferenceScreen().removePreference(disableResidentNotification);
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                findPreference<Preference>(DISABLE_RESIDENT_NOTIFICATION)?.let {
+                    preferenceScreen.removePreference(it)
+                }
             }
         }
 
-        @Override
-        public void startActivity(Intent intent) {
+        override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {}
+
+        override fun startActivity(intent: Intent?) {
             try {
-                super.startActivity(intent);
-            } catch (Throwable ignored) {
-                Toast.makeText(getActivity(), "startActivity failed.", Toast.LENGTH_SHORT).show();
-                ignored.printStackTrace();
+                super.startActivity(intent)
+            } catch (ignored: Throwable) {
+                Toast.makeText(activity, "startActivity failed.", Toast.LENGTH_SHORT).show()
+                ignored.printStackTrace()
             }
+        }
+
+        private fun setupFileFlagPreference(preferenceKey: String, fileName: String) {
+            findPreference<SwitchPreference>(preferenceKey)?.onPreferenceChangeListener =
+                Preference.OnPreferenceChangeListener { _, newValue ->
+                    if (newValue !is Boolean) return@OnPreferenceChangeListener false
+
+                    val flag = activity?.getFileStreamPath(fileName)
+                        ?: return@OnPreferenceChangeListener false
+                    if (newValue) {
+                        try {
+                            flag.createNewFile()
+                        } catch (e: IOException) {
+                            false
+                        }
+                    } else {
+                        !flag.exists() || flag.delete()
+                    }
+                }
+        }
+
+        private fun setupComponentStatePreference(
+            preferenceKey: String,
+            componentName: String,
+            stateResolver: (Boolean) -> Int
+        ) {
+            findPreference<SwitchPreference>(preferenceKey)?.onPreferenceChangeListener =
+                Preference.OnPreferenceChangeListener { _, newValue ->
+                    if (newValue !is Boolean) return@OnPreferenceChangeListener false
+                    try {
+                        val act = activity ?: return@OnPreferenceChangeListener false
+                        val newState = stateResolver(newValue)
+                        act.packageManager.setComponentEnabledSetting(
+                            ComponentName(act.packageName, componentName),
+                            newState,
+                            PackageManager.DONT_KILL_APP
+                        )
+                        true
+                    } catch (ignored: Throwable) {
+                        false
+                    }
+                }
         }
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == VCommends.REQUEST_SELECT_APP) {
-            if (resultCode == RESULT_OK) {
-                finish();
-            }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == VCommends.REQUEST_SELECT_APP && resultCode == RESULT_OK) {
+            finish()
         }
+    }
+
+    companion object {
+        private const val INSTALL_GMS_PREFERENCE = "advance_settings_install_gms"
+        private const val FILE_MANAGE = "settings_file_manage"
+        private const val DISABLE_XPOSED = "advance_settings_disable_xposed"
+        private const val FINGERPRINT_INCONSISTENT = "advance_settings_fingerprint_action"
+        private const val DISABLE_RESIDENT_NOTIFICATION =
+            "advance_settings_disable_resident_notification"
+        private const val HIDE_SETTINGS_PREFERENCE = "advance_settings_hide_settings"
+        private const val ALLOW_FAKE_SIGNATURE = "advance_settings_allow_fake_signature"
+        private const val DISABLE_INSTALLER_PREFERENCE = "advance_settings_disable_installer"
+        const val ENABLE_LAUNCHER: String = "advance_settings_enable_launcher"
+        const val DIRECTLY_BACK_PREFERENCE: String = "advance_settings_directly_back"
+        private const val DESKTOP_SETTINGS_PREFERENCE = "settings_desktop"
     }
 }

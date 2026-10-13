@@ -79,7 +79,7 @@ class SettingsActivity : VActivity() {
             }
 
             findPreference(LOG_EXPORT_PREFERENCE).setOnPreferenceClickListener { _: Preference? ->
-                val logDir = File(VLoggingManagerService.logDir)
+                val logDir = File(VLoggingManagerService.get().logDir)
                 val latestLog = logDir.listFiles()?.toList()?.maxByOrNull { it.lastModified() }
                 if (latestLog == null) {
                     Toast.makeText(context, "No log found!", Toast.LENGTH_LONG).show()
