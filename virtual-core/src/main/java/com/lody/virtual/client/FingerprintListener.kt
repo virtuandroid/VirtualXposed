@@ -63,9 +63,6 @@ class FingerprintListener(val context: Context) {
 
         // Runtime Environment Signals
         val isDebuggable: Boolean,
-
-        // Spoofing the user is a method to hide cloning
-        val userHandle: UserHandle
     ) {
         /**
          * Compares this fingerprint with another and returns a map of changed field names
@@ -129,7 +126,6 @@ class FingerprintListener(val context: Context) {
             roBootVerifiedBootState = getSystemProperty("ro.boot.verifiedbootstate"),
 
             isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
-            userHandle = Process.myUserHandle()
         )
     }
 
