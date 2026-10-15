@@ -3,12 +3,12 @@ package com.lody.virtual.client
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
+import android.os.Process
+import android.os.UserHandle
 import android.provider.Settings
 import androidx.annotation.WorkerThread
-import com.lody.virtual.server.log.VLoggingManagerService
 import com.virtualxposed.log.client.LogMessage
 import com.virtualxposed.log.client.VLoggingClient
-import com.virtualxposed.log.server.IVLoggingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -63,6 +63,9 @@ class FingerprintListener(val context: Context) {
 
         // Runtime Environment Signals
         val isDebuggable: Boolean,
+
+        // Spoofing the user is a method to hide cloning
+        val userHandle: UserHandle
     ) {
         /**
          * Compares this fingerprint with another and returns a map of changed field names
@@ -126,6 +129,7 @@ class FingerprintListener(val context: Context) {
             roBootVerifiedBootState = getSystemProperty("ro.boot.verifiedbootstate"),
 
             isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+            userHandle = Process.myUserHandle()
         )
     }
 
