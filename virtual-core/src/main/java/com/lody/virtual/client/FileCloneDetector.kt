@@ -97,9 +97,16 @@ class FileCloneDetector {
                         return@forEach
                     }
 
+                    // Ignore short blank files
+                    if (otherFile.length() < 200) {
+                        if (otherFile.readText().isBlank()) {
+                            return@forEach
+                        }
+                    }
+
                     // Ignore cache files
                     if (originalFilePath.startsWith("/cache/")) {
-                        return
+                        return@forEach
                     }
 
                     areFilesIdentical(realFile, otherFile)

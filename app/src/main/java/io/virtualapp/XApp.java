@@ -29,6 +29,9 @@ public class XApp extends Application {
     @Override
     protected void attachBaseContext(Context base) {
         gApp = this;
+        Timber.DebugTree tree = new Timber.DebugTree();
+        Timber.plant(tree);
+
         super.attachBaseContext(base);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             NativeEngine.disableJit(Build.VERSION.SDK_INT);
@@ -47,9 +50,6 @@ public class XApp extends Application {
         super.onCreate();
         VirtualCore virtualCore = VirtualCore.get();
         virtualCore.initialize(new BaseVirtualInitializer(this, virtualCore));
-
-        Timber.DebugTree tree = new Timber.DebugTree();
-        Timber.plant(tree);
     }
 
 }
