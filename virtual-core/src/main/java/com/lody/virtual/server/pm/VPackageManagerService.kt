@@ -1,1146 +1,1376 @@
-package com.lody.virtual.server.pm;
+package com.lody.virtual.server.pm
 
-import android.annotation.TargetApi;
-import android.content.ComponentName;
-import android.content.Intent;
-import android.content.pm.ActivityInfo;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.PermissionGroupInfo;
-import android.content.pm.PermissionInfo;
-import android.content.pm.ProviderInfo;
-import android.content.pm.ResolveInfo;
-import android.content.pm.ServiceInfo;
-import android.os.Build;
-import android.os.Parcel;
-import android.os.RemoteException;
-import android.text.TextUtils;
-import android.util.Log;
-
-import com.lody.virtual.client.core.VirtualCore;
-import com.lody.virtual.client.fixer.ComponentFixer;
-import com.lody.virtual.client.stub.VASettings;
-import com.lody.virtual.helper.compat.ObjectsCompat;
-import com.lody.virtual.os.VBinder;
-import com.lody.virtual.os.VUserHandle;
-import com.lody.virtual.remote.VParceledListSlice;
-import com.lody.virtual.remote.logging.LogMessageHolder;
-import com.lody.virtual.server.IPackageInstaller;
-import com.lody.virtual.server.IPackageManager;
-import com.lody.virtual.server.log.VLoggingManagerService;
-import com.lody.virtual.server.permission.VPermissionManager;
-import com.lody.virtual.server.pm.installer.VPackageInstallerService;
-import com.lody.virtual.server.pm.parser.PackageParserEx;
-import com.lody.virtual.server.pm.parser.VPackage;
-import com.virtualxposed.log.client.LogMessage;
-import com.virtualxposed.log.client.VLoggingClient;
-
-import java.io.File;
-import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static android.content.pm.PackageManager.MATCH_DIRECT_BOOT_UNAWARE;
-import static com.lody.virtual.server.security.SecurityUtils.enforceCallingUser;
+import android.annotation.TargetApi
+import android.content.ComponentName
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.PermissionGroupInfo
+import android.content.pm.PermissionInfo
+import android.content.pm.ProviderInfo
+import android.content.pm.ResolveInfo
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.Parcel
+import android.os.RemoteException
+import android.text.TextUtils
+import com.lody.virtual.client.core.VirtualCore
+import com.lody.virtual.client.fixer.ComponentFixer
+import com.lody.virtual.client.stub.VASettings
+import com.lody.virtual.helper.compat.ObjectsCompat
+import com.lody.virtual.os.VBinder
+import com.lody.virtual.os.VUserHandle
+import com.lody.virtual.remote.VParceledListSlice
+import com.lody.virtual.remote.logging.LogMessageHolder
+import com.lody.virtual.server.IPackageInstaller
+import com.lody.virtual.server.IPackageManager
+import com.lody.virtual.server.log.VLoggingManagerService
+import com.lody.virtual.server.permission.VPermissionManager
+import com.lody.virtual.server.pm.installer.VPackageInstallerService
+import com.lody.virtual.server.pm.parser.PackageParserEx
+import com.lody.virtual.server.pm.parser.VPackage
+import com.lody.virtual.server.pm.parser.VPackage.ActivityComponent
+import com.lody.virtual.server.pm.parser.VPackage.PermissionComponent
+import com.lody.virtual.server.pm.parser.VPackage.PermissionGroupComponent
+import com.lody.virtual.server.pm.parser.VPackage.ProviderComponent
+import com.lody.virtual.server.pm.parser.VPackage.ServiceComponent
+import com.lody.virtual.server.security.SecurityUtils.enforceCallingUser
+import com.virtualxposed.log.client.LogMessage
+import com.virtualxposed.log.client.LogMessage.GetProvider
+import com.virtualxposed.log.client.LogMessage.GetService
+import com.virtualxposed.log.client.VLoggingClient
+import timber.log.Timber
+import java.io.File
+import java.io.PrintWriter
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * @author Lody
  */
-public class VPackageManagerService extends IPackageManager.Stub {
+class VPackageManagerService : IPackageManager.Stub() {
+    private val mResolveInfo: ResolveInfo?
 
-    static final String TAG = "PackageManager";
-    static final Comparator<ResolveInfo> sResolvePrioritySorter = new Comparator<ResolveInfo>() {
-        public int compare(ResolveInfo r1, ResolveInfo r2) {
-            int v1 = r1.priority;
-            int v2 = r2.priority;
-            if (v1 != v2) {
-                return (v1 > v2) ? -1 : 1;
-            }
-            v1 = r1.preferredOrder;
-            v2 = r2.preferredOrder;
-            if (v1 != v2) {
-                return (v1 > v2) ? -1 : 1;
-            }
-            if (r1.isDefault != r2.isDefault) {
-                return r1.isDefault ? -1 : 1;
-            }
-            v1 = r1.match;
-            v2 = r2.match;
-            if (v1 != v2) {
-                return (v1 > v2) ? -1 : 1;
-            }
-            return 0;
-        }
-    };
-    private static final AtomicReference<VPackageManagerService> gService = new AtomicReference<>();
-    private static final Comparator<ProviderInfo> sProviderInitOrderSorter = new Comparator<ProviderInfo>() {
-        public int compare(ProviderInfo p1, ProviderInfo p2) {
-            final int v1 = p1.initOrder;
-            final int v2 = p2.initOrder;
-            return (v1 > v2) ? -1 : ((v1 < v2) ? 1 : 0);
-        }
-    };
+    private val mActivities = ActivityIntentResolver()
+    private val mServices = ServiceIntentResolver()
+    private val mReceivers = ActivityIntentResolver()
+    private val mProviders =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) ProviderIntentResolver() else null
 
-    private final ResolveInfo mResolveInfo;
+    private val mProvidersByComponent = HashMap<ComponentName?, ProviderComponent>()
 
-    private final ActivityIntentResolver mActivities = new ActivityIntentResolver();
-    private final ServiceIntentResolver mServices = new ServiceIntentResolver();
-    private final ActivityIntentResolver mReceivers = new ActivityIntentResolver();
-    private final ProviderIntentResolver mProviders = Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT ? new ProviderIntentResolver() : null;
+    private val mPermissions = HashMap<String?, PermissionComponent?>()
+    private val mPermissionGroups = HashMap<String?, PermissionGroupComponent>()
+    private val mProvidersByAuthority = HashMap<String?, ProviderComponent?>()
 
-    private final HashMap<ComponentName, VPackage.ProviderComponent> mProvidersByComponent = new HashMap<>();
-
-    private final HashMap<String, VPackage.PermissionComponent> mPermissions = new HashMap<>();
-    private final HashMap<String, VPackage.PermissionGroupComponent> mPermissionGroups = new HashMap<>();
-    private final HashMap<String, VPackage.ProviderComponent> mProvidersByAuthority = new HashMap<>();
-
-    private final Map<String, VPackage> mPackages = PackageCacheManager.PACKAGE_CACHE;
+    private val mPackages: MutableMap<String?, VPackage> = PackageCacheManager.PACKAGE_CACHE
 
 
-    public VPackageManagerService() {
-        Intent intent = new Intent();
-        intent.setClassName(VirtualCore.get().getHostPkg(), VASettings.RESOLVER_ACTIVITY);
-        mResolveInfo = VirtualCore.get().getUnHookPackageManager().resolveActivity(intent, 0);
+    init {
+        val intent = Intent()
+        intent.setClassName(VirtualCore.get().hostPkg, VASettings.RESOLVER_ACTIVITY)
+        mResolveInfo = VirtualCore.get().unHookPackageManager.resolveActivity(intent, 0)
     }
 
-    public static void systemReady() {
-        VPackageManagerService instance = new VPackageManagerService();
-        new VUserManagerService(VirtualCore.get().getContext(), instance, new char[0], instance.mPackages);
-        gService.set(instance);
-    }
-
-    public static VPackageManagerService get() {
-        return gService.get();
-    }
-
-
-    void analyzePackageLocked(VPackage pkg) {
-        int N = pkg.activities.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.ActivityComponent a = pkg.activities.get(i);
+    fun analyzePackageLocked(pkg: VPackage) {
+        var N = pkg.activities.size
+        for (i in 0..<N) {
+            val a = pkg.activities[i]
             if (a.info.processName == null) {
-                a.info.processName = a.info.packageName;
+                a.info.processName = a.info.packageName
             }
-            mActivities.addActivity(a, "activity");
+            mActivities.addActivity(a, "activity")
         }
-        N = pkg.services.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.ServiceComponent a = pkg.services.get(i);
+        N = pkg.services.size
+        for (i in 0..<N) {
+            val a = pkg.services[i]
             if (a.info.processName == null) {
-                a.info.processName = a.info.packageName;
+                a.info.processName = a.info.packageName
             }
-            mServices.addService(a);
+            mServices.addService(a)
         }
-        N = pkg.receivers.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.ActivityComponent a = pkg.receivers.get(i);
+        N = pkg.receivers.size
+        for (i in 0..<N) {
+            val a = pkg.receivers[i]
             if (a.info.processName == null) {
-                a.info.processName = a.info.packageName;
+                a.info.processName = a.info.packageName
             }
-            mReceivers.addActivity(a, "receiver");
+            mReceivers.addActivity(a, "receiver")
         }
 
-        N = pkg.providers.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.ProviderComponent p = pkg.providers.get(i);
+        N = pkg.providers.size
+        for (i in 0..<N) {
+            val p = pkg.providers[i]
             if (p.info.processName == null) {
-                p.info.processName = p.info.packageName;
+                p.info.processName = p.info.packageName
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                mProviders.addProvider(p);
+                mProviders!!.addProvider(p)
             }
-            String names[] = p.info.authority.split(";");
-            for (String name : names) {
+            val names: Array<String?> =
+                p.info.authority.split(";".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+            for (name in names) {
                 if (!mProvidersByAuthority.containsKey(name)) {
-                    mProvidersByAuthority.put(name, p);
+                    mProvidersByAuthority[name] = p
                 }
             }
-            mProvidersByComponent.put(p.getComponentName(), p);
+            mProvidersByComponent[p.getComponentName()] = p
         }
 
-        N = pkg.permissions.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.PermissionComponent permission = pkg.permissions.get(i);
-            mPermissions.put(permission.className, permission);
+        N = pkg.permissions.size
+        for (i in 0..<N) {
+            val permission = pkg.permissions[i]
+            mPermissions[permission.className] = permission
         }
-        N = pkg.permissionGroups.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.PermissionGroupComponent group = pkg.permissionGroups.get(i);
-            mPermissionGroups.put(group.className, group);
+        N = pkg.permissionGroups.size
+        for (i in 0..<N) {
+            val group = pkg.permissionGroups[i]
+            mPermissionGroups[group.className] = group
         }
     }
 
-    void deletePackageLocked(String packageName) {
-        VPackage pkg = mPackages.get(packageName);
-        if (pkg == null) {
-            return;
+    fun deletePackageLocked(packageName: String?) {
+        val pkg = mPackages[packageName] ?: return
+        var N = pkg.activities.size
+        for (i in 0..<N) {
+            val a = pkg.activities[i]
+            mActivities.removeActivity(a, "activity")
         }
-        int N = pkg.activities.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.ActivityComponent a = pkg.activities.get(i);
-            mActivities.removeActivity(a, "activity");
+        N = pkg.services.size
+        for (i in 0..<N) {
+            val a = pkg.services[i]
+            mServices.removeService(a)
         }
-        N = pkg.services.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.ServiceComponent a = pkg.services.get(i);
-            mServices.removeService(a);
-        }
-        N = pkg.receivers.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.ActivityComponent a = pkg.receivers.get(i);
-            mReceivers.removeActivity(a, "receiver");
+        N = pkg.receivers.size
+        for (i in 0..<N) {
+            val a = pkg.receivers[i]
+            mReceivers.removeActivity(a, "receiver")
         }
 
-        N = pkg.providers.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.ProviderComponent p = pkg.providers.get(i);
+        N = pkg.providers.size
+        for (i in 0..<N) {
+            val p = pkg.providers[i]
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                mProviders.removeProvider(p);
+                mProviders!!.removeProvider(p)
             }
-            String names[] = p.info.authority.split(";");
-            for (String name : names) {
-                mProvidersByAuthority.remove(name);
+            val names: Array<String?> =
+                p.info.authority.split(";".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+            for (name in names) {
+                mProvidersByAuthority.remove(name)
             }
-            mProvidersByComponent.remove(p.getComponentName());
+            mProvidersByComponent.remove(p.getComponentName())
         }
 
-        N = pkg.permissions.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.PermissionComponent permission = pkg.permissions.get(i);
-            mPermissions.remove(permission.className);
+        N = pkg.permissions.size
+        for (i in 0..<N) {
+            val permission = pkg.permissions[i]
+            mPermissions.remove(permission.className)
         }
-        N = pkg.permissionGroups.size();
-        for (int i = 0; i < N; i++) {
-            VPackage.PermissionGroupComponent group = pkg.permissionGroups.get(i);
-            mPermissionGroups.remove(group.className);
+        N = pkg.permissionGroups.size
+        for (i in 0..<N) {
+            val group = pkg.permissionGroups[i]
+            mPermissionGroups.remove(group.className)
         }
     }
 
-    @Override
-    public List<String> getSharedLibraries(String packageName) {
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(packageName);
+    override fun getSharedLibraries(packageName: String?): MutableList<String?>? {
+        synchronized(mPackages) {
+            val p = mPackages[packageName]
             if (p != null) {
-                ArrayList<String> list = new ArrayList<>();
+                val list = ArrayList<String?>()
                 if (p.usesLibraries != null) {
-                    list.addAll(p.usesLibraries);
+                    list.addAll(p.usesLibraries)
                 }
                 if (p.usesOptionalLibraries != null) {
-                    list.addAll(p.usesOptionalLibraries);
+                    list.addAll(p.usesOptionalLibraries)
                 }
-                return list;
+                return list
             }
-            return null;
+            return null
         }
     }
 
-    @Override
-    public int checkPermission(String permName, String pkgName, int userId) {
-        if ("android.permission.INTERACT_ACROSS_USERS".equals(permName)
-                || "android.permission.INTERACT_ACROSS_USERS_FULL".equals(permName)) {
-            return PackageManager.PERMISSION_DENIED;
+    override fun checkPermission(permName: String?, pkgName: String?, userId: Int): Int {
+        if ("android.permission.INTERACT_ACROSS_USERS" == permName
+            || "android.permission.INTERACT_ACROSS_USERS_FULL" == permName
+        ) {
+            return PackageManager.PERMISSION_DENIED
         }
         return VPermissionManager.get()
-                .checkPermission(permName, getPackageUid(pkgName, userId));
+            .checkPermission(permName, getPackageUid(pkgName, userId))
     }
 
-    @Override
-    public PackageInfo getPackageInfo(String packageName, int flags, int userId) {
-        checkUserId(userId);
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(packageName);
+    override fun getPackageInfo(packageName: String?, flags: Int, userId: Int): PackageInfo? {
+        checkUserId(userId)
+        synchronized(mPackages) {
+            val p = mPackages[packageName]
             if (p != null) {
-                PackageSetting ps = p.mExtras;
-                return generatePackageInfo(p, ps, flags, userId);
+                val ps = p.mExtras
+                return generatePackageInfo(p, ps, flags, userId)
             }
         }
-        return null;
+        return null
     }
 
-    private PackageInfo generatePackageInfo(VPackage p, PackageSetting ps, int flags, int userId) {
-        flags = updateFlagsNought(flags);
-        PackageInfo packageInfo = PackageParserEx.generatePackageInfo(p, flags,
-                ps.firstInstallTime, ps.lastUpdateTime, ps.readUserState(userId), userId);
-        return packageInfo;
+    private fun generatePackageInfo(
+        p: VPackage?,
+        ps: PackageSetting,
+        flags: Int,
+        userId: Int
+    ): PackageInfo? {
+        var flags = flags
+        flags = updateFlagsNought(flags)
+        val packageInfo = PackageParserEx.generatePackageInfo(
+            p, flags,
+            ps.firstInstallTime, ps.lastUpdateTime, ps.readUserState(userId), userId
+        )
+        return packageInfo
     }
 
-    private int updateFlagsNought(int flags) {
+    private fun updateFlagsNought(flags: Int): Int {
+        var flags = flags
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            return flags;
+            return flags
         }
-        if ((flags & (PackageManager.MATCH_DIRECT_BOOT_UNAWARE
-                | PackageManager.MATCH_DIRECT_BOOT_AWARE)) != 0) {
+        if ((flags and (PackageManager.MATCH_DIRECT_BOOT_UNAWARE
+                    or PackageManager.MATCH_DIRECT_BOOT_AWARE)) != 0
+        ) {
             // Caller expressed an explicit opinion about what encryption
             // aware/unaware components they want to see, so fall through and
             // give them what they want
         } else {
             // Caller expressed no opinion, so match based on user state
-            flags |= PackageManager.MATCH_DIRECT_BOOT_AWARE | MATCH_DIRECT_BOOT_UNAWARE;
+            flags =
+                flags or (PackageManager.MATCH_DIRECT_BOOT_AWARE or PackageManager.MATCH_DIRECT_BOOT_UNAWARE)
         }
-        return flags;
+        return flags
     }
 
-    private void checkUserId(int userId) throws SecurityException {
+    @Throws(SecurityException::class)
+    private fun checkUserId(userId: Int) {
         if (!VUserManagerService.get().exists(userId)) {
-            throw new SecurityException("Invalid userId " + userId);
+            throw SecurityException("Invalid userId $userId")
         }
     }
 
-    @Override
-    public ActivityInfo getActivityInfo(ComponentName component, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
-        flags = updateFlagsNought(flags);
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(component.getPackageName());
+    override fun getActivityInfo(component: ComponentName, flags: Int, userId: Int): ActivityInfo? {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
+        flags = updateFlagsNought(flags)
+        synchronized(mPackages) {
+            val p = mPackages[component.packageName]
             if (p != null) {
-                PackageSetting ps = p.mExtras;
-                VPackage.ActivityComponent a = mActivities.mActivities.get(component);
+                val ps = p.mExtras
+                val a = mActivities.mActivities[component]
                 if (a != null) {
-                    ActivityInfo activityInfo = PackageParserEx.generateActivityInfo(a, flags, ps.readUserState(userId), userId);
-                    ComponentFixer.fixComponentInfo(ps, activityInfo, userId);
-                    return activityInfo;
+                    val activityInfo = PackageParserEx.generateActivityInfo(
+                        a,
+                        flags,
+                        ps.readUserState(userId),
+                        userId
+                    )
+                    ComponentFixer.fixComponentInfo(ps, activityInfo, userId)
+                    return activityInfo
                 }
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public boolean activitySupportsIntent(ComponentName component, Intent intent, String resolvedType) {
-        synchronized (mPackages) {
-            VPackage.ActivityComponent a = mActivities.mActivities.get(component);
-            if (a == null) {
-                return false;
-            }
-            for (int i = 0; i < a.intents.size(); i++) {
-                if (a.intents.get(i).filter.match(intent.getAction(), resolvedType, intent.getScheme(), intent.getData(),
-                        intent.getCategories(), TAG) >= 0) {
-                    return true;
+    override fun activitySupportsIntent(
+        component: ComponentName?,
+        intent: Intent,
+        resolvedType: String?
+    ): Boolean {
+        synchronized(mPackages) {
+            val a = mActivities.mActivities[component] ?: return false
+            for (i in a.intents.indices) {
+                if (a.intents[i].filter.match(
+                        intent.action, resolvedType, intent.scheme, intent.data,
+                        intent.categories, TAG
+                    ) >= 0
+                ) {
+                    return true
                 }
             }
-            return false;
+            return false
         }
     }
 
-    @Override
-    public ActivityInfo getReceiverInfo(ComponentName component, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
-        flags = updateFlagsNought(flags);
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(component.getPackageName());
+    override fun getReceiverInfo(component: ComponentName, flags: Int, userId: Int): ActivityInfo? {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
+        flags = updateFlagsNought(flags)
+        synchronized(mPackages) {
+            val p = mPackages[component.packageName]
             if (p != null) {
-                PackageSetting ps = p.mExtras;
-                VPackage.ActivityComponent a = mReceivers.mActivities.get(component);
+                val ps = p.mExtras
+                val a = mReceivers.mActivities[component]
                 if (a != null) {
-                    ActivityInfo receiverInfo = PackageParserEx.generateActivityInfo(a, flags, ps.readUserState(userId), userId);
-                    ComponentFixer.fixComponentInfo(ps, receiverInfo, userId);
-                    return receiverInfo;
+                    val receiverInfo = PackageParserEx.generateActivityInfo(
+                        a,
+                        flags,
+                        ps.readUserState(userId),
+                        userId
+                    )
+                    ComponentFixer.fixComponentInfo(ps, receiverInfo, userId)
+                    return receiverInfo
                 }
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public ServiceInfo getServiceInfo(ComponentName component, int flags, int userId) throws SecurityException {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    @Throws(SecurityException::class)
+    override fun getServiceInfo(component: ComponentName, flags: Int, userId: Int): ServiceInfo? {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(component.getPackageName());
+        flags = updateFlagsNought(flags)
+        synchronized(mPackages) {
+            val p = mPackages[component.packageName]
             if (p != null) {
-                PackageSetting ps = p.mExtras;
-                VPackage.ServiceComponent s = mServices.mServices.get(component);
+                val ps = p.mExtras
+                val s = mServices.mServices[component]
 
                 if (s != null) {
-                    String callingPackage = VBinder.getCallingPackageName();
+                    val callingPackage = VBinder.getCallingPackageName()
 
-                    LogMessage logMessage = new LogMessage.GetService(component.getPackageName(), component.getClassName(), s.info.exported);
-                    LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
-                    VLoggingManagerService.get().log(holder);
+                    val logMessage: LogMessage = GetService(
+                        component.packageName,
+                        component.className,
+                        s.info.exported
+                    )
+                    val holder = LogMessageHolder.Builder(logMessage).build()
+                    VLoggingManagerService.get().log(holder)
 
-                    if (!s.info.exported && !Objects.equals(callingPackage, p.packageName)) {
-                        throw new SecurityException("Unable to access non-exported service in " + p.packageName + " from " + callingPackage);
+                    if (!s.info.exported && callingPackage != p.packageName) {
+                        throw SecurityException("Unable to access non-exported service in " + p.packageName + " from " + callingPackage)
                     }
 
-                    ServiceInfo serviceInfo = PackageParserEx.generateServiceInfo(s, flags, ps.readUserState(userId), userId);
-                    ComponentFixer.fixComponentInfo(ps, serviceInfo, userId);
-                    return serviceInfo;
+                    val serviceInfo = PackageParserEx.generateServiceInfo(
+                        s,
+                        flags,
+                        ps.readUserState(userId),
+                        userId
+                    )
+                    ComponentFixer.fixComponentInfo(ps, serviceInfo, userId)
+                    return serviceInfo
                 }
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public ProviderInfo getProviderInfo(ComponentName component, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun getProviderInfo(component: ComponentName, flags: Int, userId: Int): ProviderInfo? {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(component.getPackageName());
+        flags = updateFlagsNought(flags)
+        synchronized(mPackages) {
+            val p = mPackages[component.packageName]
             if (p != null) {
-                PackageSetting ps = p.mExtras;
-                VPackage.ProviderComponent provider = mProvidersByComponent.get(component);
+                val ps = p.mExtras
+                val provider = mProvidersByComponent[component]
                 if (provider != null) {
-                    String callingPackage = VBinder.getCallingPackageName();
+                    val callingPackage = VBinder.getCallingPackageName()
 
-                    LogMessage logMessage = new LogMessage.BindService(provider.owner.packageName, component.getClassName(), provider.info.exported);
-                    LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
-                    VLoggingManagerService.get().log(holder);
+                    val logMessage: LogMessage = LogMessage.BindService(
+                        provider.owner.packageName,
+                        component.className,
+                        provider.info.exported
+                    )
+                    val holder = LogMessageHolder.Builder(logMessage).build()
+                    VLoggingManagerService.get().log(holder)
 
-                    if (!provider.info.exported && !Objects.equals(callingPackage, p.packageName)) {
-                        throw new SecurityException("Unable to access non-exported provider in " + p.packageName + " from " + callingPackage);
+                    if (!provider.info.exported && callingPackage != p.packageName) {
+                        throw SecurityException("Unable to access non-exported provider in " + p.packageName + " from " + callingPackage)
                     }
 
-                    ProviderInfo providerInfo = PackageParserEx.generateProviderInfo(provider, flags, ps.readUserState(userId), userId);
-                    ComponentFixer.fixComponentInfo(ps, providerInfo, userId);
-                    return providerInfo;
+                    val providerInfo = PackageParserEx.generateProviderInfo(
+                        provider,
+                        flags,
+                        ps.readUserState(userId),
+                        userId
+                    )
+                    ComponentFixer.fixComponentInfo(ps, providerInfo, userId)
+                    return providerInfo
                 }
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public ResolveInfo resolveIntent(Intent intent, String resolvedType, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
-        flags = updateFlagsNought(flags);
-        List<ResolveInfo> query = queryIntentActivities(intent, resolvedType, flags, 0);
-        return chooseBestActivity(intent, resolvedType, flags, query);
+    override fun resolveIntent(
+        intent: Intent,
+        resolvedType: String?,
+        flags: Int,
+        userId: Int
+    ): ResolveInfo? {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
+        flags = updateFlagsNought(flags)
+        val query = queryIntentActivities(intent, resolvedType, flags, 0)
+        return chooseBestActivity(intent, resolvedType, flags, query)
     }
 
-    private ResolveInfo chooseBestActivity(Intent intent, String resolvedType, int flags, List<ResolveInfo> query) {
+    private fun chooseBestActivity(
+        intent: Intent?,
+        resolvedType: String?,
+        flags: Int,
+        query: List<ResolveInfo>?
+    ): ResolveInfo? {
         if (query != null) {
-            final int N = query.size();
+            val N = query.size
             if (N == 1) {
-                return query.get(0);
+                return query[0]
             } else if (N > 1) {
                 // If there is more than one activity with the same priority,
                 // then let the user decide between them.
-                ResolveInfo r0 = query.get(0);
-                ResolveInfo r1 = query.get(1);
+                val r0 = query[0]
+                val r1 = query[1]
                 // If the first activity has a higher priority, or a different
-                // default, then it is always desireable to pick it.
-                if (r0.priority != r1.priority || r0.preferredOrder != r1.preferredOrder
-                        || r0.isDefault != r1.isDefault) {
-                    return query.get(0);
+                // default, then it is always desirable to pick it.
+                if (r0.priority != r1.priority || r0.preferredOrder != r1.preferredOrder || r0.isDefault != r1.isDefault) {
+                    return query[0]
                 }
+
                 // If we have saved a preference for a preferred activity for
                 // this Intent, use that.
-
-                ResolveInfo ri = findPreferredActivity(intent, resolvedType,
-                        flags, query, r0.priority);
-                //noinspection ConstantConditions
+                val ri = findPreferredActivity(
+                    intent, resolvedType,
+                    flags, query, r0.priority
+                )
                 if (ri != null) {
-                    return ri;
+                    return ri
                 }
-                return query.get(0);
+                return query[0]
             }
         }
-        return null;
+        return null
     }
 
-    private ResolveInfo findPreferredActivity(Intent intent, String resolvedType, int flags, List<ResolveInfo> query, int priority) {
-        return null;
+    private fun findPreferredActivity(
+        intent: Intent?,
+        resolvedType: String?,
+        flags: Int,
+        query: List<ResolveInfo>?,
+        priority: Int
+    ): ResolveInfo? {
+        return null
     }
 
-    @Override
-    public List<ResolveInfo> queryIntentActivities(Intent intent, String resolvedType, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun queryIntentActivities(
+        intent: Intent,
+        resolvedType: String?,
+        flags: Int,
+        userId: Int
+    ): List<ResolveInfo>? {
+        var intent = intent
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        ComponentName comp = intent.getComponent();
+        flags = updateFlagsNought(flags)
+        var comp = intent.component
         if (comp == null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
-                if (intent.getSelector() != null) {
-                    intent = intent.getSelector();
-                    comp = intent.getComponent();
+                if (intent.selector != null) {
+                    intent = intent.selector!!
+                    comp = intent.component
                 }
             }
         }
         if (comp != null) {
-            final List<ResolveInfo> list = new ArrayList<ResolveInfo>(1);
-            final ActivityInfo ai = getActivityInfo(comp, flags, userId);
+            val list: MutableList<ResolveInfo> = ArrayList(1)
+            val ai = getActivityInfo(comp, flags, userId)
             if (ai != null) {
-                final ResolveInfo ri = new ResolveInfo();
-                ri.activityInfo = ai;
-                list.add(ri);
+                val ri = ResolveInfo()
+                ri.activityInfo = ai
+                list.add(ri)
             }
-            return list;
+            return list
         }
 
         // reader
-        synchronized (mPackages) {
-            final String pkgName = intent.getPackage();
-            if (pkgName == null) {
-                return mActivities.queryIntent(intent, resolvedType, flags, userId);
-            }
-            final VPackage pkg = mPackages.get(pkgName);
+        synchronized(mPackages) {
+            val pkgName = intent.getPackage() ?: return mActivities.queryIntent(
+                intent,
+                resolvedType,
+                flags,
+                userId
+            )
+            val pkg = mPackages[pkgName]
             if (pkg != null) {
-                return mActivities.queryIntentForPackage(intent, resolvedType, flags, pkg.activities, userId);
+                return mActivities.queryIntentForPackage(
+                    intent,
+                    resolvedType,
+                    flags,
+                    pkg.activities,
+                    userId
+                )
             }
-            return Collections.emptyList();
+            return emptyList()
         }
     }
 
-    @Override
-    public List<ResolveInfo> queryIntentReceivers(Intent intent, String resolvedType, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun queryIntentReceivers(
+        intent: Intent,
+        resolvedType: String?,
+        flags: Int,
+        userId: Int
+    ): List<ResolveInfo?>? {
+        var intent = intent
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        ComponentName comp = intent.getComponent();
+        flags = updateFlagsNought(flags)
+        var comp = intent.component
         if (comp == null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
-                if (intent.getSelector() != null) {
-                    intent = intent.getSelector();
-                    comp = intent.getComponent();
+                if (intent.selector != null) {
+                    intent = intent.selector!!
+                    comp = intent.component
                 }
             }
         }
         if (comp != null) {
-            List<ResolveInfo> list = new ArrayList<ResolveInfo>(1);
-            ActivityInfo ai = getReceiverInfo(comp, flags, userId);
+            val list: MutableList<ResolveInfo> = ArrayList(1)
+            val ai = getReceiverInfo(comp, flags, userId)
             if (ai != null) {
-                ResolveInfo ri = new ResolveInfo();
-                ri.activityInfo = ai;
-                list.add(ri);
+                val ri = ResolveInfo()
+                ri.activityInfo = ai
+                list.add(ri)
             }
-            return list;
+            return list
         }
 
         // reader
-        synchronized (mPackages) {
-            String pkgName = intent.getPackage();
-            if (pkgName == null) {
-                return mReceivers.queryIntent(intent, resolvedType, flags, userId);
-            }
-            final VPackage pkg = mPackages.get(pkgName);
+        synchronized(mPackages) {
+            val pkgName = intent.getPackage() ?: return mReceivers.queryIntent(
+                intent,
+                resolvedType,
+                flags,
+                userId
+            )
+            val pkg = mPackages[pkgName]
             if (pkg != null) {
-                return mReceivers.queryIntentForPackage(intent, resolvedType, flags, pkg.receivers, userId);
+                return mReceivers.queryIntentForPackage(
+                    intent,
+                    resolvedType,
+                    flags,
+                    pkg.receivers,
+                    userId
+                )
             }
-            return Collections.emptyList();
+            return emptyList()
         }
     }
 
-    @Override
-    public ResolveInfo resolveService(Intent intent, String resolvedType, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun resolveService(
+        intent: Intent,
+        resolvedType: String?,
+        flags: Int,
+        userId: Int
+    ): ResolveInfo? {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        List<ResolveInfo> query = queryIntentServices(intent, resolvedType, flags, userId);
+        flags = updateFlagsNought(flags)
+        val query = queryIntentServices(intent, resolvedType, flags, userId)
         if (query != null) {
-            if (!query.isEmpty()) {
+            if (query.isNotEmpty()) {
                 // If there is more than one service with the same priority,
                 // just arbitrarily pick the first one.
-                return query.get(0);
+                return query[0]
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public List<ResolveInfo> queryIntentServices(Intent intent, String resolvedType, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
-        flags = updateFlagsNought(flags);
-        ComponentName comp = intent.getComponent();
+    override fun queryIntentServices(
+        intent: Intent,
+        resolvedType: String?,
+        flags: Int,
+        userId: Int
+    ): List<ResolveInfo>? {
+        var intent = intent
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
+        flags = updateFlagsNought(flags)
+        var comp = intent.component
         if (comp == null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
-                if (intent.getSelector() != null) {
-                    intent = intent.getSelector();
-                    comp = intent.getComponent();
+                if (intent.selector != null) {
+                    intent = intent.selector!!
+                    comp = intent.component
                 }
             }
         }
         if (comp != null) {
-            final List<ResolveInfo> list = new ArrayList<>(1);
-            final ServiceInfo si = getServiceInfo(comp, flags, userId);
+            val list: MutableList<ResolveInfo> = ArrayList(1)
+            val si = getServiceInfo(comp, flags, userId)
             if (si != null) {
-                final ResolveInfo ri = new ResolveInfo();
-                ri.serviceInfo = si;
-                list.add(ri);
+                val ri = ResolveInfo()
+                ri.serviceInfo = si
+                list.add(ri)
             }
-            return list;
+            return list
         }
 
         // reader
-        synchronized (mPackages) {
-            String pkgName = intent.getPackage();
-            if (pkgName == null) {
-                return mServices.queryIntent(intent, resolvedType, flags, userId);
-            }
-            final VPackage pkg = mPackages.get(pkgName);
+        synchronized(mPackages) {
+            val pkgName = intent.getPackage() ?: return mServices.queryIntent(
+                intent,
+                resolvedType,
+                flags,
+                userId
+            )
+            val pkg = mPackages[pkgName]
             if (pkg != null) {
-                return mServices.queryIntentForPackage(intent, resolvedType, flags, pkg.services, userId);
+                return mServices.queryIntentForPackage(
+                    intent,
+                    resolvedType,
+                    flags,
+                    pkg.services,
+                    userId
+                )
             }
-            return Collections.emptyList();
+            return mutableListOf()
         }
     }
 
     @TargetApi(Build.VERSION_CODES.KITKAT)
-    @Override
-    public List<ResolveInfo> queryIntentContentProviders(Intent intent, String resolvedType, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun queryIntentContentProviders(
+        intent: Intent,
+        resolvedType: String?,
+        flags: Int,
+        userId: Int
+    ): MutableList<ResolveInfo?>? {
+        var intent = intent
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        ComponentName comp = intent.getComponent();
+        flags = updateFlagsNought(flags)
+        var comp = intent.component
         if (comp == null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
-                if (intent.getSelector() != null) {
-                    intent = intent.getSelector();
-                    comp = intent.getComponent();
+                if (intent.selector != null) {
+                    intent = intent.selector!!
+                    comp = intent.component
                 }
             }
         }
         if (comp != null) {
-            final List<ResolveInfo> list = new ArrayList<ResolveInfo>(1);
-            final ProviderInfo pi = getProviderInfo(comp, flags, userId);
+            val list: MutableList<ResolveInfo?> = ArrayList(1)
+            val pi = getProviderInfo(comp, flags, userId)
             if (pi != null) {
-                final ResolveInfo ri = new ResolveInfo();
-                ri.providerInfo = pi;
-                list.add(ri);
+                val ri = ResolveInfo()
+                ri.providerInfo = pi
+                list.add(ri)
             }
-            return list;
+            return list
         }
         // reader
-        synchronized (mPackages) {
-            String pkgName = intent.getPackage();
-            if (pkgName == null) {
-                return mProviders.queryIntent(intent, resolvedType, flags, userId);
-            }
-            final VPackage pkg = mPackages.get(pkgName);
+        synchronized(mPackages) {
+            val pkgName = intent.getPackage() ?: return mProviders!!.queryIntent(
+                intent,
+                resolvedType,
+                flags,
+                userId
+            )
+            val pkg = mPackages[pkgName]
             if (pkg != null) {
-                return mProviders.queryIntentForPackage(intent, resolvedType, flags, pkg.providers, userId);
+                return mProviders!!.queryIntentForPackage(
+                    intent,
+                    resolvedType,
+                    flags,
+                    pkg.providers,
+                    userId
+                )
             }
-            return Collections.emptyList();
+            return mutableListOf()
         }
     }
 
-    @Override
-    public VParceledListSlice<ProviderInfo> queryContentProviders(String processName, int vuid, int flags) {
-        int userId = VUserHandle.getUserId(vuid);
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun queryContentProviders(
+        processName: String?,
+        vuid: Int,
+        flags: Int
+    ): VParceledListSlice<ProviderInfo?> {
+        var flags = flags
+        val userId = VUserHandle.getUserId(vuid)
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        ArrayList<ProviderInfo> finalList = new ArrayList<>(3);
+        flags = updateFlagsNought(flags)
+        val finalList = ArrayList<ProviderInfo?>(3)
         // reader
-        synchronized (mPackages) {
-            for (VPackage.ProviderComponent p : mProvidersByComponent.values()) {
-                PackageSetting ps = p.owner.mExtras;
-                if (processName == null || ps.appId == VUserHandle.getAppId(vuid) && p.info.processName.equals(processName)) {
-                    ProviderInfo providerInfo = PackageParserEx.generateProviderInfo(p, flags, ps.readUserState(userId), userId);
-                    finalList.add(providerInfo);
+        synchronized(mPackages) {
+            for (p in mProvidersByComponent.values) {
+                val ps = p.owner.mExtras
+                if (processName == null || ps.appId == VUserHandle.getAppId(vuid) && p.info.processName == processName) {
+                    val providerInfo = PackageParserEx.generateProviderInfo(
+                        p,
+                        flags,
+                        ps.readUserState(userId),
+                        userId
+                    )
+                    finalList.add(providerInfo)
                 }
             }
         }
-        if (!finalList.isEmpty()) {
-            Collections.sort(finalList, sProviderInitOrderSorter);
+        if (finalList.isNotEmpty()) {
+            Collections.sort(finalList, sProviderInitOrderSorter)
         }
-        return new VParceledListSlice<>(finalList);
+        return VParceledListSlice(finalList)
     }
 
-    @Override
-    public VParceledListSlice<PackageInfo> getInstalledPackages(int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun getInstalledPackages(flags: Int, userId: Int): VParceledListSlice<PackageInfo?> {
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        ArrayList<PackageInfo> pkgList = new ArrayList<>(mPackages.size());
-        synchronized (mPackages) {
-            for (VPackage p : mPackages.values()) {
-                PackageSetting ps = p.mExtras;
-                PackageInfo info = generatePackageInfo(p, ps, flags, userId);
+        val pkgList = ArrayList<PackageInfo?>(mPackages.size)
+        synchronized(mPackages) {
+            for (p in mPackages.values) {
+                val ps = p.mExtras
+                val info = generatePackageInfo(p, ps, flags, userId)
                 if (info != null) {
-                    pkgList.add(info);
+                    pkgList.add(info)
                 }
             }
         }
-        return new VParceledListSlice<>(pkgList);
+        return VParceledListSlice(pkgList)
     }
 
-    @Override
-    public VParceledListSlice<ApplicationInfo> getInstalledApplications(int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun getInstalledApplications(
+        flags: Int,
+        userId: Int
+    ): VParceledListSlice<ApplicationInfo?> {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        ArrayList<ApplicationInfo> list = new ArrayList<>(mPackages.size());
-        synchronized (mPackages) {
-            for (VPackage p : mPackages.values()) {
-                PackageSetting ps = p.mExtras;
-                ApplicationInfo info = PackageParserEx.generateApplicationInfo(p, flags, ps.readUserState(userId), userId);
-                list.add(info);
+        flags = updateFlagsNought(flags)
+        val list = ArrayList<ApplicationInfo?>(mPackages.size)
+        synchronized(mPackages) {
+            for (p in mPackages.values) {
+                val ps = p.mExtras
+                val info = PackageParserEx.generateApplicationInfo(
+                    p,
+                    flags,
+                    ps.readUserState(userId),
+                    userId
+                )
+                list.add(info)
             }
         }
-        return new VParceledListSlice<>(list);
+        return VParceledListSlice(list)
     }
 
-    @Override
-    public PermissionInfo getPermissionInfo(String name, int flags) {
-        synchronized (mPackages) {
-            VPackage.PermissionComponent p = mPermissions.get(name);
+    override fun getPermissionInfo(name: String?, flags: Int): PermissionInfo? {
+        synchronized(mPackages) {
+            val p = mPermissions[name]
             if (p != null) {
-                return new PermissionInfo(p.info);
+                return PermissionInfo(p.info)
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public List<PermissionInfo> queryPermissionsByGroup(String group, int flags) {
-        synchronized (mPackages) {
-            return null;
+    override fun queryPermissionsByGroup(
+        group: String?,
+        flags: Int
+    ): MutableList<PermissionInfo?>? {
+        synchronized(mPackages) {
+            return null
         }
     }
 
-    @Override
-    public PermissionGroupInfo getPermissionGroupInfo(String name, int flags) {
-        synchronized (mPackages) {
-            VPackage.PermissionGroupComponent p = mPermissionGroups.get(name);
+    override fun getPermissionGroupInfo(name: String?, flags: Int): PermissionGroupInfo? {
+        synchronized(mPackages) {
+            val p = mPermissionGroups[name]
             if (p != null) {
-                return new PermissionGroupInfo(p.info);
+                return PermissionGroupInfo(p.info)
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public List<PermissionGroupInfo> getAllPermissionGroups(int flags) {
-        synchronized (mPackages) {
-            final int N = mPermissionGroups.size();
-            ArrayList<PermissionGroupInfo> out = new ArrayList<>(N);
-            for (VPackage.PermissionGroupComponent pg : mPermissionGroups.values()) {
-                out.add(new PermissionGroupInfo(pg.info));
+    override fun getAllPermissionGroups(flags: Int): MutableList<PermissionGroupInfo?> {
+        synchronized(mPackages) {
+            val N = mPermissionGroups.size
+            val out = ArrayList<PermissionGroupInfo?>(N)
+            for (pg in mPermissionGroups.values) {
+                out.add(PermissionGroupInfo(pg.info))
             }
-            return out;
+            return out
         }
     }
 
-    @Override
-    public ProviderInfo resolveContentProvider(String name, int flags, int userId) throws SecurityException {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    @Throws(SecurityException::class)
+    override fun resolveContentProvider(name: String?, flags: Int, userId: Int): ProviderInfo? {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        synchronized (mPackages) {
-            final VPackage.ProviderComponent provider = mProvidersByAuthority.get(name);
+        flags = updateFlagsNought(flags)
+        synchronized(mPackages) {
+            val provider = mProvidersByAuthority[name]
             if (provider != null) {
-                PackageSetting ps = provider.owner.mExtras;
-                ProviderInfo providerInfo = PackageParserEx.generateProviderInfo(provider, flags, ps.readUserState(userId), userId);
+                val ps = provider.owner.mExtras
+                val providerInfo = PackageParserEx.generateProviderInfo(
+                    provider,
+                    flags,
+                    ps.readUserState(userId),
+                    userId
+                )
                 if (providerInfo != null) {
-                    VLoggingClient.get().log(new LogMessage.GetProvider(providerInfo.packageName, provider.getComponentName().getClassName(), providerInfo.exported));
-                    VPackage p = mPackages.get(providerInfo.packageName);
+                    VLoggingClient.get().log(
+                        GetProvider(
+                            providerInfo.packageName,
+                            provider.getComponentName().className,
+                            providerInfo.exported
+                        )
+                    )
+                    val p = mPackages[providerInfo.packageName]
 
-                    String callingPackage = VBinder.getCallingPackageName();
+                    val callingPackage = VBinder.getCallingPackageName()
 
-                    if (!provider.info.exported && !Objects.equals(callingPackage, providerInfo.packageName)) {
-                        throw new SecurityException("Unable to access non-exported provider in " + providerInfo.packageName + " from " + callingPackage);
+                    if (!provider.info.exported && callingPackage != providerInfo.packageName) {
+                        throw SecurityException("Unable to access non-exported provider in " + providerInfo.packageName + " from " + callingPackage)
                     }
 
-                    PackageSetting settings = p.mExtras;
-                    ComponentFixer.fixComponentInfo(settings, providerInfo, userId);
-                    return providerInfo;
+                    val settings = p!!.mExtras
+                    ComponentFixer.fixComponentInfo(settings, providerInfo, userId)
+                    return providerInfo
                 }
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public ApplicationInfo getApplicationInfo(String packageName, int flags, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun getApplicationInfo(
+        packageName: String?,
+        flags: Int,
+        userId: Int
+    ): ApplicationInfo? {
+        var flags = flags
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags);
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(packageName);
+        flags = updateFlagsNought(flags)
+        synchronized(mPackages) {
+            val p = mPackages[packageName]
             if (p != null) {
-                PackageSetting ps = p.mExtras;
-                return PackageParserEx.generateApplicationInfo(p, flags, ps.readUserState(userId), userId);
+                val ps = p.mExtras
+                return PackageParserEx.generateApplicationInfo(
+                    p,
+                    flags,
+                    ps.readUserState(userId),
+                    userId
+                )
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public String[] getPackagesForUid(int uid) {
-        int userId = VUserHandle.getUserId(uid);
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun getPackagesForUid(uid: Int): Array<String?> {
+        val userId = VUserHandle.getUserId(uid)
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        synchronized (this) {
-            List<String> pkgList = new ArrayList<>(2);
-            for (VPackage p : mPackages.values()) {
-                PackageSetting settings = p.mExtras;
+        synchronized(this) {
+            val pkgList: MutableList<String?> = ArrayList(2)
+            for (p in mPackages.values) {
+                val settings = p.mExtras
                 if (VUserHandle.getUid(userId, settings.appId) == uid) {
-                    pkgList.add(p.packageName);
+                    pkgList.add(p.packageName)
                 }
             }
-            return pkgList.toArray(new String[pkgList.size()]);
+            return pkgList.toTypedArray<String?>()
         }
     }
 
-    @Override
-    public int getPackageUid(String packageName, int userId) {
-        checkUserId(userId);
-        enforceCallingUser(userId);
+    override fun getPackageUid(packageName: String?, userId: Int): Int {
+        checkUserId(userId)
+        enforceCallingUser(userId)
 
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(packageName);
+        synchronized(mPackages) {
+            val p = mPackages[packageName]
             if (p != null) {
-                PackageSetting ps = p.mExtras;
-                return VUserHandle.getUid(userId, ps.appId);
+                val ps = p.mExtras
+                return VUserHandle.getUid(userId, ps.appId)
             }
-            return -1;
+            return -1
         }
     }
 
-    @Override
-    public String getNameForUid(int uid) {
-        int appId = VUserHandle.getAppId(uid);
-        synchronized (mPackages) {
-            for (VPackage p : mPackages.values()) {
-                PackageSetting ps = p.mExtras;
+    override fun getNameForUid(uid: Int): String? {
+        val appId = VUserHandle.getAppId(uid)
+        synchronized(mPackages) {
+            for (p in mPackages.values) {
+                val ps = p.mExtras
                 if (ps.appId == appId) {
-                    return ps.packageName;
+                    return ps.packageName
                 }
             }
-            return null;
+            return null
         }
     }
 
 
-    @Override
-    public List<String> querySharedPackages(String packageName) {
-        synchronized (mPackages) {
-            VPackage p = mPackages.get(packageName);
-            if (p == null || p.mSharedUserId == null) {
-                // noinspection unchecked
-                return Collections.EMPTY_LIST;
+    override fun querySharedPackages(packageName: String?): List<String?> {
+        synchronized(mPackages) {
+            val p = mPackages[packageName]
+            if (p?.mSharedUserId == null) {
+                return emptyList()
             }
-            ArrayList<String> list = new ArrayList<>();
-            for (VPackage one : mPackages.values()) {
+            val list = ArrayList<String?>()
+            for (one in mPackages.values) {
                 if (TextUtils.equals(one.mSharedUserId, p.mSharedUserId)) {
-                    list.add(one.packageName);
+                    list.add(one.packageName)
                 }
             }
-            return list;
+            return list
         }
     }
 
-    @Override
-    public boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
+    @Throws(RemoteException::class)
+    override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
         try {
-            return super.onTransact(code, data, reply, flags);
-        } catch (Throwable e) {
-            e.printStackTrace();
-            throw e;
+            return super.onTransact(code, data, reply, flags)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            throw e
         }
     }
 
-    @Override
-    public IPackageInstaller getPackageInstaller() {
-        return VPackageInstallerService.get();
+    override fun getPackageInstaller(): IPackageInstaller? {
+        return VPackageInstallerService.get()
     }
 
-    @Override
-    public boolean canRequestPackageInstalls() throws RemoteException {
-        return true;
+    @Throws(RemoteException::class)
+    override fun canRequestPackageInstalls(): Boolean {
+        return true
     }
 
-    void createNewUser(int userId, File userPath) {
-        for (VPackage p : mPackages.values()) {
-            PackageSetting setting = p.mExtras;
-            setting.modifyUserState(userId);
+    fun createNewUser(userId: Int, userPath: File?) {
+        for (p in mPackages.values) {
+            val setting = p.mExtras
+            setting.modifyUserState(userId)
         }
     }
 
-    void cleanUpUser(int userId) {
-        for (VPackage p : mPackages.values()) {
-            PackageSetting ps = p.mExtras;
-            ps.removeUser(userId);
+    fun cleanUpUser(userId: Int) {
+        for (p in mPackages.values) {
+            val ps = p.mExtras
+            ps.removeUser(userId)
         }
     }
 
-    private final class ActivityIntentResolver extends IntentResolver<VPackage.ActivityIntentInfo, ResolveInfo> {
+    private class ActivityIntentResolver :
+        IntentResolver<VPackage.ActivityIntentInfo, ResolveInfo>() {
         // Keys are String (activity class name), values are Activity.
-        private final HashMap<ComponentName, VPackage.ActivityComponent> mActivities = new HashMap<>();
-        private int mFlags;
+        val mActivities = HashMap<ComponentName, ActivityComponent>()
+        private var mFlags = 0
 
-        public List<ResolveInfo> queryIntent(Intent intent, String resolvedType, boolean defaultOnly, int userId) {
-            mFlags = defaultOnly ? PackageManager.MATCH_DEFAULT_ONLY : 0;
-            return super.queryIntent(intent, resolvedType, defaultOnly, userId);
+        override fun queryIntent(
+            intent: Intent,
+            resolvedType: String?,
+            defaultOnly: Boolean,
+            userId: Int
+        ): MutableList<ResolveInfo?>? {
+            mFlags = if (defaultOnly) PackageManager.MATCH_DEFAULT_ONLY else 0
+            return super.queryIntent(intent, resolvedType, defaultOnly, userId)
         }
 
-        List<ResolveInfo> queryIntent(Intent intent, String resolvedType, int flags, int userId) {
-            mFlags = flags;
-            return super.queryIntent(intent, resolvedType, (flags & PackageManager.MATCH_DEFAULT_ONLY) != 0, userId);
+        fun queryIntent(
+            intent: Intent,
+            resolvedType: String?,
+            flags: Int,
+            userId: Int
+        ): List<ResolveInfo>? {
+            mFlags = flags
+            return super.queryIntent(
+                intent,
+                resolvedType,
+                (flags and PackageManager.MATCH_DEFAULT_ONLY) != 0,
+                userId
+            )
         }
 
-        List<ResolveInfo> queryIntentForPackage(Intent intent, String resolvedType, int flags,
-                                                ArrayList<VPackage.ActivityComponent> packageActivities, int userId) {
+        fun queryIntentForPackage(
+            intent: Intent?, resolvedType: String?, flags: Int,
+            packageActivities: ArrayList<ActivityComponent>?, userId: Int
+        ): List<ResolveInfo>? {
             if (packageActivities == null) {
-                return null;
+                return null
             }
-            mFlags = flags;
-            final boolean defaultOnly = (flags & PackageManager.MATCH_DEFAULT_ONLY) != 0;
-            final int N = packageActivities.size();
-            ArrayList<VPackage.ActivityIntentInfo[]> listCut = new ArrayList<VPackage.ActivityIntentInfo[]>(
-                    N);
+            mFlags = flags
+            val defaultOnly = (flags and PackageManager.MATCH_DEFAULT_ONLY) != 0
+            val N = packageActivities.size
+            val listCut = ArrayList<Array<VPackage.ActivityIntentInfo?>?>(
+                N
+            )
 
-            ArrayList<VPackage.ActivityIntentInfo> intentFilters;
-            for (int i = 0; i < N; ++i) {
-                intentFilters = packageActivities.get(i).intents;
-                if (intentFilters != null && intentFilters.size() > 0) {
-                    VPackage.ActivityIntentInfo[] array = new VPackage.ActivityIntentInfo[intentFilters
-                            .size()];
-                    intentFilters.toArray(array);
-                    listCut.add(array);
+            var intentFilters: ArrayList<VPackage.ActivityIntentInfo>?
+            for (i in 0..<N) {
+                intentFilters = packageActivities[i].intents
+                if (!intentFilters.isNullOrEmpty()) {
+                    val array = arrayOfNulls<VPackage.ActivityIntentInfo>(
+                        intentFilters
+                            .size
+                    )
+                    intentFilters.toArray(array)
+                    listCut.add(array)
                 }
             }
-            return super.queryIntentFromList(intent, resolvedType, defaultOnly, listCut, userId);
+            return super.queryIntentFromList(intent, resolvedType, defaultOnly, listCut, userId)
         }
 
-        public final void addActivity(VPackage.ActivityComponent a, String type) {
-            mActivities.put(a.getComponentName(), a);
-            final int NI = a.intents.size();
-            for (int j = 0; j < NI; j++) {
-                VPackage.ActivityIntentInfo intent = a.intents.get(j);
-                if (intent.filter.getPriority() > 0 && "activity".equals(type)) {
-                    intent.filter.setPriority(0);
-                    Log.w(TAG, "Package " + a.info.applicationInfo.packageName + " has activity " + a.className
-                            + " with priority > 0, forcing to 0");
+        fun addActivity(a: ActivityComponent, type: String?) {
+            mActivities[a.getComponentName()] = a
+            val NI = a.intents.size
+            for (j in 0..<NI) {
+                val intent = a.intents[j]
+                if (intent.filter.priority > 0 && "activity" == type) {
+                    intent.filter.priority = 0
+                    Timber.tag(TAG).w(("Package " + a.info.applicationInfo.packageName + " has activity " + a.className
+                            + " with priority > 0, forcing to 0")
+                    )
                 }
-                addFilter(intent);
+                addFilter(intent)
             }
         }
 
-        public final void removeActivity(VPackage.ActivityComponent a, String type) {
-            mActivities.remove(a.getComponentName());
-            final int NI = a.intents.size();
-            for (int j = 0; j < NI; j++) {
-                VPackage.ActivityIntentInfo intent = a.intents.get(j);
-                removeFilter(intent);
+        fun removeActivity(a: ActivityComponent, type: String?) {
+            mActivities.remove(a.getComponentName())
+            val NI = a.intents.size
+            for (j in 0..<NI) {
+                val intent = a.intents[j]
+                removeFilter(intent)
             }
         }
 
-        @Override
-        protected boolean allowFilterResult(VPackage.ActivityIntentInfo filter, List<ResolveInfo> dest) {
-            ActivityInfo filterAi = filter.activity.info;
-            for (int i = dest.size() - 1; i >= 0; i--) {
-                ActivityInfo destAi = dest.get(i).activityInfo;
-                if (ObjectsCompat.equals(destAi.name, filterAi.name) && ObjectsCompat.equals(destAi.packageName, filterAi.packageName)) {
-                    return false;
+        override fun allowFilterResult(
+            filter: VPackage.ActivityIntentInfo?,
+            dest: MutableList<ResolveInfo?>
+        ): Boolean {
+            if (filter == null) {
+                return false
+            }
+            val filterAi = filter.activity.info
+            for (i in dest.indices.reversed()) {
+                val destAi = dest[i]!!.activityInfo
+                if (ObjectsCompat.equals(
+                        destAi.name,
+                        filterAi.name
+                    ) && ObjectsCompat.equals(destAi.packageName, filterAi.packageName)
+                ) {
+                    return false
                 }
             }
-            return true;
+            return true
         }
 
-        @Override
-        protected VPackage.ActivityIntentInfo[] newArray(int size) {
-            return new VPackage.ActivityIntentInfo[size];
+        override fun newArray(size: Int): Array<VPackage.ActivityIntentInfo?> {
+            return arrayOfNulls(size)
         }
 
-        @Override
-        protected boolean isFilterStopped(VPackage.ActivityIntentInfo filter) {
-            return false;
+        override fun isFilterStopped(filter: VPackage.ActivityIntentInfo?): Boolean {
+            return false
         }
 
-        @Override
-        protected boolean isPackageForFilter(String packageName, VPackage.ActivityIntentInfo info) {
-            return packageName.equals(info.activity.owner.packageName);
+        override fun isPackageForFilter(
+            packageName: String,
+            info: VPackage.ActivityIntentInfo?
+        ): Boolean {
+            return packageName == info?.activity?.owner?.packageName
         }
 
-        @Override
-        protected ResolveInfo newResult(VPackage.ActivityIntentInfo info, int match, int userId) {
-            enforceCallingUser(userId);
+        protected override fun newResult(
+            filter: VPackage.ActivityIntentInfo?,
+            match: Int,
+            userId: Int
+        ): ResolveInfo? {
+            enforceCallingUser(userId)
+            if (filter == null) {
+                return null
+            }
 
-            final VPackage.ActivityComponent activity = info.activity;
-            PackageSetting ps = activity.owner.mExtras;
-            ActivityInfo ai = PackageParserEx.generateActivityInfo(activity, mFlags, ps.readUserState(userId), userId);
+            val activity = filter.activity
+            val ps = activity?.owner?.mExtras
+            val ai = PackageParserEx.generateActivityInfo(
+                activity,
+                mFlags,
+                ps?.readUserState(userId),
+                userId
+            )
             if (ai == null) {
-                return null;
+                return null
             }
-            final ResolveInfo res = new ResolveInfo();
-            res.activityInfo = ai;
-            if ((mFlags & PackageManager.GET_RESOLVED_FILTER) != 0) {
-                res.filter = info.filter;
+            val res = ResolveInfo()
+            res.activityInfo = ai
+            if ((mFlags and PackageManager.GET_RESOLVED_FILTER) != 0) {
+                res.filter = filter.filter
             }
-            res.priority = info.filter.getPriority();
-            res.preferredOrder = activity.owner.mPreferredOrder;
-            res.match = match;
-            res.isDefault = info.hasDefault;
-            res.labelRes = info.labelRes;
-            res.nonLocalizedLabel = info.nonLocalizedLabel;
-            res.icon = info.icon;
-            return res;
+            res.priority = filter.filter.priority
+            res.preferredOrder = activity?.owner?.mPreferredOrder ?: 0
+            res.match = match
+            res.isDefault = filter.hasDefault
+            res.labelRes = filter.labelRes
+            res.nonLocalizedLabel = filter.nonLocalizedLabel
+            res.icon = filter.icon
+            return res
         }
 
-        @Override
-        protected void sortResults(List<ResolveInfo> results) {
-            Collections.sort(results, sResolvePrioritySorter);
+        protected override fun sortResults(results: MutableList<ResolveInfo?>) {
+            Collections.sort(results, sResolvePrioritySorter)
         }
 
-        @Override
-        protected void dumpFilter(PrintWriter out, String prefix, VPackage.ActivityIntentInfo filter) {
-
+        override fun dumpFilter(
+            out: PrintWriter?,
+            prefix: String?,
+            filter: VPackage.ActivityIntentInfo?
+        ) {
         }
 
-        @Override
-        protected Object filterToLabel(VPackage.ActivityIntentInfo filter) {
-            return filter.activity;
+        override fun filterToLabel(filter: VPackage.ActivityIntentInfo?): Any? {
+            return filter?.activity
         }
 
-        protected void dumpFilterLabel(PrintWriter out, String prefix, Object label, int count) {
-
+        override fun dumpFilterLabel(out: PrintWriter?, prefix: String?, label: Any?, count: Int) {
         }
     }
 
-    private final class ServiceIntentResolver extends IntentResolver<VPackage.ServiceIntentInfo, ResolveInfo> {
+    private class ServiceIntentResolver :
+        IntentResolver<VPackage.ServiceIntentInfo?, ResolveInfo?>() {
         // Keys are String (activity class name), values are Activity.
-        private final HashMap<ComponentName, VPackage.ServiceComponent> mServices = new HashMap<>();
-        private int mFlags;
+        val mServices = HashMap<ComponentName?, ServiceComponent?>()
+        private var mFlags = 0
 
-        public List<ResolveInfo> queryIntent(Intent intent, String resolvedType, boolean defaultOnly, int userId) {
-            mFlags = defaultOnly ? PackageManager.MATCH_DEFAULT_ONLY : 0;
-            return super.queryIntent(intent, resolvedType, defaultOnly, userId);
+        override fun queryIntent(
+            intent: Intent,
+            resolvedType: String?,
+            defaultOnly: Boolean,
+            userId: Int
+        ): MutableList<ResolveInfo?>? {
+            mFlags = if (defaultOnly) PackageManager.MATCH_DEFAULT_ONLY else 0
+            return super.queryIntent(intent, resolvedType, defaultOnly, userId)
         }
 
-        public List<ResolveInfo> queryIntent(Intent intent, String resolvedType, int flags, int userId) {
-            mFlags = flags;
-            return super.queryIntent(intent, resolvedType, (flags & PackageManager.MATCH_DEFAULT_ONLY) != 0, userId);
+        fun queryIntent(
+            intent: Intent,
+            resolvedType: String?,
+            flags: Int,
+            userId: Int
+        ): List<ResolveInfo>? {
+            mFlags = flags
+            return super.queryIntent(
+                intent,
+                resolvedType,
+                (flags and PackageManager.MATCH_DEFAULT_ONLY) != 0,
+                userId
+            )?.filterNotNull()
         }
 
-        public List<ResolveInfo> queryIntentForPackage(Intent intent, String resolvedType, int flags,
-                                                       ArrayList<VPackage.ServiceComponent> packageServices, int userId) {
+        fun queryIntentForPackage(
+            intent: Intent?, resolvedType: String?, flags: Int,
+            packageServices: ArrayList<ServiceComponent>?, userId: Int
+        ): List<ResolveInfo>? {
             if (packageServices == null) {
-                return null;
+                return null
             }
-            mFlags = flags;
-            final boolean defaultOnly = (flags & PackageManager.MATCH_DEFAULT_ONLY) != 0;
-            final int N = packageServices.size();
-            ArrayList<VPackage.ServiceIntentInfo[]> listCut = new ArrayList<VPackage.ServiceIntentInfo[]>(N);
+            mFlags = flags
+            val defaultOnly = (flags and PackageManager.MATCH_DEFAULT_ONLY) != 0
+            val N = packageServices.size
+            val listCut = ArrayList<Array<VPackage.ServiceIntentInfo?>?>(N)
 
-            ArrayList<VPackage.ServiceIntentInfo> intentFilters;
-            for (int i = 0; i < N; ++i) {
-                intentFilters = packageServices.get(i).intents;
-                if (intentFilters != null && intentFilters.size() > 0) {
-                    VPackage.ServiceIntentInfo[] array = new VPackage.ServiceIntentInfo[intentFilters.size()];
-                    intentFilters.toArray(array);
-                    listCut.add(array);
+            var intentFilters: ArrayList<VPackage.ServiceIntentInfo?>?
+            for (i in 0..<N) {
+                intentFilters = packageServices[i].intents
+                if (!intentFilters.isNullOrEmpty()) {
+                    val array = arrayOfNulls<VPackage.ServiceIntentInfo>(intentFilters.size)
+                    intentFilters.toArray(array)
+                    listCut.add(array)
                 }
             }
-            return super.queryIntentFromList(intent, resolvedType, defaultOnly, listCut, userId);
+            return super.queryIntentFromList(intent, resolvedType, defaultOnly, listCut, userId)?.filterNotNull()
         }
 
-        public final void addService(VPackage.ServiceComponent s) {
-            mServices.put(s.getComponentName(), s);
-            final int NI = s.intents.size();
-            int j;
-            for (j = 0; j < NI; j++) {
-                VPackage.ServiceIntentInfo intent = s.intents.get(j);
-                addFilter(intent);
+        fun addService(s: ServiceComponent) {
+            mServices[s.getComponentName()] = s
+            val NI = s.intents.size
+            var j = 0
+            while (j < NI) {
+                val intent = s.intents[j]
+                addFilter(intent)
+                j++
             }
         }
 
-        public final void removeService(VPackage.ServiceComponent s) {
-            mServices.remove(s.getComponentName());
-            final int NI = s.intents.size();
-            int j;
-            for (j = 0; j < NI; j++) {
-                VPackage.ServiceIntentInfo intent = s.intents.get(j);
-                removeFilter(intent);
+        fun removeService(s: ServiceComponent) {
+            mServices.remove(s.getComponentName())
+            val NI = s.intents.size
+            var j = 0
+            while (j < NI) {
+                val intent = s.intents[j]
+                removeFilter(intent)
+                j++
             }
         }
 
-        @Override
-        protected boolean allowFilterResult(VPackage.ServiceIntentInfo filter, List<ResolveInfo> dest) {
-            ServiceInfo filterSi = filter.service.info;
-            for (int i = dest.size() - 1; i >= 0; i--) {
-                ServiceInfo destAi = dest.get(i).serviceInfo;
+        override fun allowFilterResult(
+            filter: VPackage.ServiceIntentInfo?,
+            dest: MutableList<ResolveInfo?>
+        ): Boolean {
+            if (filter == null) {
+                return false
+            }
+
+            val filterSi = filter.service.info
+            for (i in dest.indices.reversed()) {
+                val destAi = dest[i]!!.serviceInfo
                 if (ObjectsCompat.equals(destAi.name, filterSi.name)
-                        && ObjectsCompat.equals(destAi.packageName, filterSi.packageName)) {
-                    return false;
+                    && ObjectsCompat.equals(destAi.packageName, filterSi.packageName)
+                ) {
+                    return false
                 }
             }
-            return true;
+            return true
         }
 
-        @Override
-        protected VPackage.ServiceIntentInfo[] newArray(int size) {
-            return new VPackage.ServiceIntentInfo[size];
+        override fun newArray(size: Int): Array<VPackage.ServiceIntentInfo?> {
+            return arrayOfNulls(size)
         }
 
-        @Override
-        protected boolean isFilterStopped(VPackage.ServiceIntentInfo filter) {
-            return false;
+        override fun isFilterStopped(filter: VPackage.ServiceIntentInfo?): Boolean {
+            return false
         }
 
-        @Override
-        protected boolean isPackageForFilter(String packageName, VPackage.ServiceIntentInfo info) {
-            return packageName.equals(info.service.owner.packageName);
+        override fun isPackageForFilter(
+            packageName: String,
+            filter: VPackage.ServiceIntentInfo?
+        ): Boolean {
+            return packageName == filter?.service?.owner?.packageName
         }
 
-        @Override
-        protected ResolveInfo newResult(VPackage.ServiceIntentInfo filter, int match, int userId) {
-            enforceCallingUser(userId);
+        protected override fun newResult(
+            filter: VPackage.ServiceIntentInfo?,
+            match: Int,
+            userId: Int
+        ): ResolveInfo? {
+            enforceCallingUser(userId)
+            if (filter == null) {
+                return null
+            }
 
-            final VPackage.ServiceComponent service = filter.service;
-            PackageSetting ps = service.owner.mExtras;
-            ServiceInfo si = PackageParserEx.generateServiceInfo(service, mFlags, ps.readUserState(userId), userId);
+            val service = filter.service
+            val ps = service.owner.mExtras
+            val si = PackageParserEx.generateServiceInfo(
+                service,
+                mFlags,
+                ps.readUserState(userId),
+                userId
+            )
             if (si == null) {
-                return null;
+                return null
             }
-            final ResolveInfo res = new ResolveInfo();
-            res.serviceInfo = si;
-            if ((mFlags & PackageManager.GET_RESOLVED_FILTER) != 0) {
-                res.filter = filter.filter;
+            val res = ResolveInfo()
+            res.serviceInfo = si
+            if ((mFlags and PackageManager.GET_RESOLVED_FILTER) != 0) {
+                res.filter = filter.filter
             }
-            res.priority = filter.filter.getPriority();
-            res.preferredOrder = service.owner.mPreferredOrder;
-            res.match = match;
-            res.isDefault = filter.hasDefault;
-            res.labelRes = filter.labelRes;
-            res.nonLocalizedLabel = filter.nonLocalizedLabel;
-            res.icon = filter.icon;
-            return res;
+            res.priority = filter.filter.priority
+            res.preferredOrder = service.owner.mPreferredOrder
+            res.match = match
+            res.isDefault = filter.hasDefault
+            res.labelRes = filter.labelRes
+            res.nonLocalizedLabel = filter.nonLocalizedLabel
+            res.icon = filter.icon
+            return res
         }
 
-        @Override
-        protected void sortResults(List<ResolveInfo> results) {
-            Collections.sort(results, sResolvePrioritySorter);
+        protected override fun sortResults(results: MutableList<ResolveInfo?>) {
+            Collections.sort(results, sResolvePrioritySorter)
         }
 
-        @Override
-        protected void dumpFilter(PrintWriter out, String prefix, VPackage.ServiceIntentInfo filter) {
-
+        override fun dumpFilter(
+            out: PrintWriter?,
+            prefix: String?,
+            filter: VPackage.ServiceIntentInfo?
+        ) {
         }
 
-        @Override
-        protected Object filterToLabel(VPackage.ServiceIntentInfo filter) {
-            return filter.service;
+        override fun filterToLabel(filter: VPackage.ServiceIntentInfo?): Any? {
+            return filter?.service
         }
 
-        protected void dumpFilterLabel(PrintWriter out, String prefix, Object label, int count) {
-
+        override fun dumpFilterLabel(out: PrintWriter?, prefix: String?, label: Any?, count: Int) {
         }
     }
 
+    companion object {
+        const val TAG: String = "PackageManager"
+        @JvmField
+        val sResolvePrioritySorter: Comparator<ResolveInfo> = object : Comparator<ResolveInfo> {
+            override fun compare(r1: ResolveInfo, r2: ResolveInfo): Int {
+                var v1 = r1.priority
+                var v2 = r2.priority
+                if (v1 != v2) {
+                    return if (v1 > v2) -1 else 1
+                }
+                v1 = r1.preferredOrder
+                v2 = r2.preferredOrder
+                if (v1 != v2) {
+                    return if (v1 > v2) -1 else 1
+                }
+                if (r1.isDefault != r2.isDefault) {
+                    return if (r1.isDefault) -1 else 1
+                }
+                v1 = r1.match
+                v2 = r2.match
+                if (v1 != v2) {
+                    return if (v1 > v2) -1 else 1
+                }
+                return 0
+            }
+        }
+        private val gService = AtomicReference<VPackageManagerService>()
+        private val sProviderInitOrderSorter: Comparator<ProviderInfo> =
+            Comparator { p1, p2 ->
+                val v1 = p1.initOrder
+                val v2 = p2.initOrder
+                if (v1 > v2) -1 else (if (v1 < v2) 1 else 0)
+            }
+
+        @JvmStatic
+        fun systemReady() {
+            val instance = VPackageManagerService()
+            VUserManagerService(
+                VirtualCore.get().context,
+                instance,
+                CharArray(0),
+                instance.mPackages
+            )
+            gService.set(instance)
+        }
+
+        @JvmStatic
+        fun get(): VPackageManagerService {
+            return gService.get()
+        }
+    }
 }

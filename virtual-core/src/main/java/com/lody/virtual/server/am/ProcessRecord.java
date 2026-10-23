@@ -11,7 +11,7 @@ import com.lody.virtual.os.VUserHandle;
 import java.util.HashSet;
 import java.util.Set;
 
-final class ProcessRecord extends Binder implements Comparable<ProcessRecord> {
+public final class ProcessRecord extends Binder implements Comparable<ProcessRecord> {
 
 	final ConditionVariable lock = new ConditionVariable();
 	public final ApplicationInfo info; // all about the first app in the process

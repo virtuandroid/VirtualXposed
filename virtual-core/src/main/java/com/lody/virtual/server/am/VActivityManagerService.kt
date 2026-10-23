@@ -1,1201 +1,1297 @@
-package com.lody.virtual.server.am;
+package com.lody.virtual.server.am
 
-import android.app.ActivityManager;
-import android.app.IApplicationThread;
-import android.app.IServiceConnection;
-import android.app.IStopUserCallback;
-import android.app.Notification;
-import android.app.NotificationManager;
-import android.content.BroadcastReceiver;
-import android.content.ComponentName;
-import android.content.Context;
-import android.content.IIntentReceiver;
-import android.content.Intent;
-import android.content.ServiceConnection;
-import android.content.pm.ActivityInfo;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.ProviderInfo;
-import android.content.pm.ServiceInfo;
-import android.net.Uri;
-import android.os.Binder;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.IBinder;
-import android.os.IInterface;
-import android.os.Parcel;
-import android.os.Process;
-import android.os.RemoteException;
-import android.os.SystemClock;
-
-import com.lody.virtual.client.IVClient;
-import com.lody.virtual.client.core.VirtualCore;
-import com.lody.virtual.client.env.Constants;
-import com.lody.virtual.client.env.SpecialComponentList;
-import com.lody.virtual.client.ipc.ProviderCall;
-import com.lody.virtual.client.ipc.VNotificationManager;
-import com.lody.virtual.client.stub.VASettings;
-import com.lody.virtual.helper.collection.ArrayMap;
-import com.lody.virtual.helper.collection.SparseArray;
-import com.lody.virtual.helper.compat.ActivityManagerCompat;
-import com.lody.virtual.helper.compat.ApplicationThreadCompat;
-import com.lody.virtual.helper.compat.BundleCompat;
-import com.lody.virtual.helper.compat.IApplicationThreadCompat;
-import com.lody.virtual.helper.utils.ComponentUtils;
-import com.lody.virtual.helper.utils.VLog;
-import com.lody.virtual.os.VBinder;
-import com.lody.virtual.os.VUserHandle;
-import com.lody.virtual.remote.AppTaskInfo;
-import com.lody.virtual.remote.BadgerInfo;
-import com.lody.virtual.remote.PendingIntentData;
-import com.lody.virtual.remote.PendingResultData;
-import com.lody.virtual.remote.VParceledListSlice;
-import com.lody.virtual.remote.logging.LogMessageHolder;
-import com.lody.virtual.server.IActivityManager;
-import com.lody.virtual.server.interfaces.IProcessObserver;
-import com.lody.virtual.server.log.VLoggingManagerService;
-import com.lody.virtual.server.pm.PackageCacheManager;
-import com.lody.virtual.server.pm.PackageSetting;
-import com.lody.virtual.server.pm.VAppManagerService;
-import com.lody.virtual.server.pm.VPackageManagerService;
-import com.lody.virtual.server.secondary.BinderDelegateService;
-import com.virtualxposed.log.client.LogMessage;
-import com.virtualxposed.log.client.VLoggingClient;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
-
-import mirror.android.app.IServiceConnectionO;
-import timber.log.Timber;
-
-import static android.os.Process.killProcess;
-import static com.lody.virtual.os.VUserHandle.getUserId;
-import static com.lody.virtual.server.security.SecurityUtils.assertPackageMatchesCallingUid;
-import static com.lody.virtual.server.security.SecurityUtils.enforceCallingUser;
-import static com.lody.virtual.server.security.SecurityUtils.enforceNotIsolatedCaller;
+import android.app.ActivityManager
+import android.app.IApplicationThread
+import android.app.IServiceConnection
+import android.app.IStopUserCallback
+import android.app.Notification
+import android.app.NotificationManager
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.content.IIntentReceiver
+import android.content.Intent
+import android.content.ServiceConnection
+import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.ProviderInfo
+import android.content.pm.ServiceInfo
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.IBinder
+import android.os.IInterface
+import android.os.Parcel
+import android.os.Process
+import android.os.RemoteException
+import android.os.SystemClock
+import com.lody.virtual.client.IVClient
+import com.lody.virtual.client.core.VirtualCore
+import com.lody.virtual.client.env.Constants
+import com.lody.virtual.client.env.SpecialComponentList
+import com.lody.virtual.client.ipc.ProviderCall
+import com.lody.virtual.client.ipc.VNotificationManager
+import com.lody.virtual.client.stub.VASettings
+import com.lody.virtual.helper.collection.SparseArray
+import com.lody.virtual.helper.compat.ActivityManagerCompat
+import com.lody.virtual.helper.compat.ApplicationThreadCompat
+import com.lody.virtual.helper.compat.BundleCompat
+import com.lody.virtual.helper.compat.IApplicationThreadCompat
+import com.lody.virtual.helper.utils.ComponentUtils
+import com.lody.virtual.helper.utils.VLog
+import com.lody.virtual.os.VBinder
+import com.lody.virtual.os.VUserHandle
+import com.lody.virtual.remote.AppTaskInfo
+import com.lody.virtual.remote.BadgerInfo
+import com.lody.virtual.remote.PendingIntentData
+import com.lody.virtual.remote.PendingResultData
+import com.lody.virtual.remote.VParceledListSlice
+import com.lody.virtual.remote.logging.LogMessageHolder
+import com.lody.virtual.server.IActivityManager
+import com.lody.virtual.server.am.ServiceRecord.IntentBindRecord
+import com.lody.virtual.server.interfaces.IProcessObserver
+import com.lody.virtual.server.log.VLoggingManagerService
+import com.lody.virtual.server.pm.PackageCacheManager
+import com.lody.virtual.server.pm.PackageSetting
+import com.lody.virtual.server.pm.VAppManagerService
+import com.lody.virtual.server.pm.VPackageManagerService
+import com.lody.virtual.server.secondary.BinderDelegateService
+import com.lody.virtual.server.security.SecurityUtils.assertPackageMatchesCallingUid
+import com.lody.virtual.server.security.SecurityUtils.enforceCallingUser
+import com.lody.virtual.server.security.SecurityUtils.enforceNotIsolatedCaller
+import com.virtualxposed.log.client.LogMessage
+import com.virtualxposed.log.client.LogMessage.AppDeath
+import com.virtualxposed.log.client.LogMessage.BroadCastReceived
+import com.virtualxposed.log.client.VLoggingClient
+import mirror.android.app.IServiceConnectionO
+import timber.log.Timber.Forest.e
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * @author Lody
  */
-public class VActivityManagerService extends IActivityManager.Stub {
+class VActivityManagerService : IActivityManager.Stub() {
+    private val mPidsSelfLocked = SparseArray<ProcessRecord>()
+    private val mMainStack = ActivityStack(this)
+    private val mHistory: MutableSet<ServiceRecord> = HashSet()
+    private val mProcessNames = ProcessMap<ProcessRecord?>()
+    private val mPendingIntents = PendingIntents()
+    private val am = VirtualCore.get().context
+        .getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    private val nm = VirtualCore.get().context
+        .getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    private static final boolean BROADCAST_NOT_STARTED_PKG = false;
-
-    private static final AtomicReference<VActivityManagerService> sService = new AtomicReference<>();
-    private static final String TAG = VActivityManagerService.class.getSimpleName();
-    private final SparseArray<ProcessRecord> mPidsSelfLocked = new SparseArray<ProcessRecord>();
-    private final ActivityStack mMainStack = new ActivityStack(this);
-    private final Set<ServiceRecord> mHistory = new HashSet<ServiceRecord>();
-    private final ProcessMap<ProcessRecord> mProcessNames = new ProcessMap<ProcessRecord>();
-    private final PendingIntents mPendingIntents = new PendingIntents();
-    private ActivityManager am = (ActivityManager) VirtualCore.get().getContext()
-            .getSystemService(Context.ACTIVITY_SERVICE);
-    private NotificationManager nm = (NotificationManager) VirtualCore.get().getContext()
-            .getSystemService(Context.NOTIFICATION_SERVICE);
-
-    public static VActivityManagerService get() {
-        return sService.get();
-    }
-
-    public static void systemReady(Context context) {
-        new VActivityManagerService().onCreate(context);
-    }
-
-    private static ServiceInfo resolveServiceInfo(Intent service, int userId) {
-        if (service != null) {
-            ServiceInfo serviceInfo = VirtualCore.get().resolveServiceInfo(service, userId);
-            if (serviceInfo != null) {
-                return serviceInfo;
-            }
-        }
-        return null;
-    }
-
-    public void onCreate(Context context) {
-        AttributeCache.init(context);
-        PackageManager pm = context.getPackageManager();
-        PackageInfo packageInfo = null;
+    fun onCreate(context: Context) {
+        AttributeCache.init(context)
+        val pm = context.packageManager
+        var packageInfo: PackageInfo? = null
         try {
-            packageInfo = pm.getPackageInfo(context.getPackageName(),
-                    PackageManager.GET_ACTIVITIES | PackageManager.GET_PROVIDERS | PackageManager.GET_META_DATA);
-        } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
+            packageInfo = pm.getPackageInfo(
+                context.packageName,
+                PackageManager.GET_ACTIVITIES or PackageManager.GET_PROVIDERS or PackageManager.GET_META_DATA
+            )
+        } catch (e: PackageManager.NameNotFoundException) {
+            e.printStackTrace()
         }
 
         if (packageInfo == null) {
-            throw new RuntimeException("Unable to found PackageInfo : " + context.getPackageName());
+            throw RuntimeException("Unable to found PackageInfo : " + context.packageName)
         }
-        sService.set(this);
-
+        sService.set(this)
     }
 
 
-    @Override
-    public int startActivity(Intent intent, ActivityInfo info, IBinder resultTo, Bundle options, String resultWho, int requestCode, int userId) {
-        enforceNotIsolatedCaller("startActivity");
-        enforceCallingUser(userId);
+    override fun startActivity(
+        intent: Intent?,
+        info: ActivityInfo?,
+        resultTo: IBinder?,
+        options: Bundle?,
+        resultWho: String?,
+        requestCode: Int,
+        userId: Int
+    ): Int {
+        enforceNotIsolatedCaller("startActivity")
+        enforceCallingUser(userId)
 
-        synchronized (this) {
-            return mMainStack.startActivityLocked(userId, intent, info, resultTo, options, resultWho, requestCode);
+        synchronized(this) {
+            return mMainStack.startActivityLocked(
+                userId,
+                intent,
+                info,
+                resultTo,
+                options,
+                resultWho,
+                requestCode
+            )
         }
     }
 
-    @Override
-    public int startActivities(Intent[] intents, String[] resolvedTypes, IBinder token, Bundle options, int userId) {
-        enforceNotIsolatedCaller("startActivities");
-        enforceCallingUser(userId);
+    override fun startActivities(
+        intents: Array<Intent?>,
+        resolvedTypes: Array<String?>?,
+        token: IBinder?,
+        options: Bundle?,
+        userId: Int
+    ): Int {
+        enforceNotIsolatedCaller("startActivities")
+        enforceCallingUser(userId)
 
-        synchronized (this) {
-            ActivityInfo[] infos = new ActivityInfo[intents.length];
-            for (int i = 0; i < intents.length; i++) {
-                ActivityInfo ai = VirtualCore.get().resolveActivityInfo(intents[i], userId);
-                if (ai == null) {
-                    return ActivityManagerCompat.START_INTENT_NOT_RESOLVED;
-                }
-                infos[i] = ai;
-
+        synchronized(this) {
+            val infos = arrayOfNulls<ActivityInfo>(intents.size)
+            for (i in intents.indices) {
+                val ai = VirtualCore.get().resolveActivityInfo(intents[i], userId)
+                    ?: return ActivityManagerCompat.START_INTENT_NOT_RESOLVED
+                infos[i] = ai
             }
-            return mMainStack.startActivitiesLocked(userId, intents, infos, resolvedTypes, token, options);
+            return mMainStack.startActivitiesLocked(
+                userId,
+                intents,
+                infos,
+                resolvedTypes,
+                token,
+                options
+            )
         }
     }
 
-    @Override
-    public String getPackageForIntentSender(IBinder binder) {
-        PendingIntentData data = mPendingIntents.getPendingIntent(binder);
+    override fun getPackageForIntentSender(binder: IBinder?): String? {
+        val data = mPendingIntents.getPendingIntent(binder)
         if (data != null) {
-            return data.creator;
+            return data.creator
         }
-        return null;
+        return null
     }
 
 
-    @Override
-    public PendingIntentData getPendingIntent(IBinder binder) {
-        return mPendingIntents.getPendingIntent(binder);
+    override fun getPendingIntent(binder: IBinder?): PendingIntentData? {
+        return mPendingIntents.getPendingIntent(binder)
     }
 
-    @Override
-    public void addPendingIntent(IBinder binder, String creator) {
-        mPendingIntents.addPendingIntent(binder, creator);
+    override fun addPendingIntent(binder: IBinder, creator: String?) {
+        mPendingIntents.addPendingIntent(binder, creator)
     }
 
-    @Override
-    public void removePendingIntent(IBinder binder) {
-        mPendingIntents.removePendingIntent(binder);
+    override fun removePendingIntent(binder: IBinder?) {
+        mPendingIntents.removePendingIntent(binder)
     }
 
-    @Override
-    public int getSystemPid() {
-        return VirtualCore.get().myUid();
+    override fun getSystemPid(): Int {
+        return VirtualCore.get().myUid()
     }
 
-    @Override
-    public void onActivityCreated(ComponentName component, ComponentName caller, IBinder token, Intent intent, String affinity, int taskId, int launchMode, int flags) {
-        int pid = Binder.getCallingPid();
-        ProcessRecord targetApp = findProcessLocked(pid);
-        if (targetApp != null) {
-            mMainStack.onActivityCreated(targetApp, component, caller, token, intent, affinity, taskId, launchMode, flags);
-        }
+    override fun onActivityCreated(
+        component: ComponentName?,
+        caller: ComponentName?,
+        token: IBinder?,
+        intent: Intent?,
+        affinity: String?,
+        taskId: Int,
+        launchMode: Int,
+        flags: Int
+    ) {
+        val pid = getCallingPid()
+        val targetApp = findProcessLocked(pid)
+        mMainStack.onActivityCreated(
+            targetApp,
+            component,
+            caller,
+            token,
+            intent,
+            affinity,
+            taskId,
+            launchMode,
+            flags
+        )
     }
 
-    @Override
-    public void onActivityResumed(int userId, IBinder token) {
-        mMainStack.onActivityResumed(userId, token);
+    override fun onActivityResumed(userId: Int, token: IBinder?) {
+        mMainStack.onActivityResumed(userId, token)
     }
 
-    @Override
-    public boolean onActivityDestroyed(int userId, IBinder token) {
-        ActivityRecord r = mMainStack.onActivityDestroyed(userId, token);
-        return r != null;
+    override fun onActivityDestroyed(userId: Int, token: IBinder?): Boolean {
+        val r = mMainStack.onActivityDestroyed(userId, token)
+        return r != null
     }
 
-    @Override
-    public AppTaskInfo getTaskInfo(int taskId) {
-        return mMainStack.getTaskInfo(taskId);
+    override fun getTaskInfo(taskId: Int): AppTaskInfo? {
+        return mMainStack.getTaskInfo(taskId)
     }
 
-    @Override
-    public String getPackageForToken(int userId, IBinder token) {
-        return mMainStack.getPackageForToken(userId, token);
+    override fun getPackageForToken(userId: Int, token: IBinder?): String? {
+        return mMainStack.getPackageForToken(userId, token)
     }
 
-    @Override
-    public ComponentName getActivityClassForToken(int userId, IBinder token) {
-        return mMainStack.getActivityClassForToken(userId, token);
+    override fun getActivityClassForToken(userId: Int, token: IBinder?): ComponentName? {
+        return mMainStack.getActivityClassForToken(userId, token)
     }
 
 
-    private void processDead(ProcessRecord record) {
-        synchronized (mHistory) {
-            Iterator<ServiceRecord> iterator = mHistory.iterator();
+    private fun processDead(record: ProcessRecord) {
+        synchronized(mHistory) {
+            val iterator = mHistory.iterator()
             while (iterator.hasNext()) {
-                ServiceRecord r = iterator.next();
+                val r = iterator.next()
                 if (r.process != null && r.process.pid == record.pid) {
-                    iterator.remove();
+                    iterator.remove()
                 }
             }
-            mMainStack.processDied(record);
+            mMainStack.processDied(record)
         }
     }
 
 
-    @Override
-    public IBinder acquireProviderClient(int userId, ProviderInfo info) {
-        enforceCallingUser(userId);
-        ProcessRecord callerApp;
-        synchronized (mPidsSelfLocked) {
-            callerApp = findProcessLocked(VBinder.getCallingPid());
+    override fun acquireProviderClient(userId: Int, info: ProviderInfo): IBinder? {
+        enforceCallingUser(userId)
+        val callerApp: ProcessRecord?
+        synchronized(mPidsSelfLocked) {
+            callerApp = findProcessLocked(VBinder.getCallingPid())
         }
-        if (callerApp == null) {
-            throw new SecurityException("Who are you?");
-        }
-        String processName = info.processName;
-        ProcessRecord r;
-        synchronized (this) {
-            r = startProcessIfNeedLocked(processName, userId, info.packageName);
+        val processName = info.processName
+        val r: ProcessRecord?
+        synchronized(this) {
+            r = startProcessIfNeedLocked(processName, userId, info.packageName)
         }
         if (r != null && r.client.asBinder().pingBinder()) {
             try {
-                return r.client.acquireProviderClient(info);
-            } catch (RemoteException e) {
-                e.printStackTrace();
+                return r.client.acquireProviderClient(info)
+            } catch (e: RemoteException) {
+                e.printStackTrace()
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public ComponentName getCallingActivity(int userId, IBinder token) {
-        return mMainStack.getCallingActivity(userId, token);
+    override fun getCallingActivity(userId: Int, token: IBinder?): ComponentName? {
+        return mMainStack.getCallingActivity(userId, token)
     }
 
-    @Override
-    public String getCallingPackage(int userId, IBinder token) {
-        return mMainStack.getCallingPackage(userId, token);
+    override fun getCallingPackage(userId: Int, token: IBinder?): String? {
+        return mMainStack.getCallingPackage(userId, token)
     }
 
 
-    @Override
-    public boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
+    @Throws(RemoteException::class)
+    override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
         try {
-            return super.onTransact(code, data, reply, flags);
-        } catch (Throwable e) {
-            e.printStackTrace();
-            throw e;
+            return super.onTransact(code, data, reply, flags)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            throw e
         }
     }
 
-    private void addRecord(ServiceRecord r) {
-        mHistory.add(r);
+    private fun addRecord(r: ServiceRecord?) {
+        mHistory.add(r!!)
     }
 
-    private ServiceRecord findRecordLocked(int userId, ServiceInfo serviceInfo) {
-        synchronized (mHistory) {
-            for (ServiceRecord r : mHistory) {
+    private fun findRecordLocked(userId: Int, serviceInfo: ServiceInfo?): ServiceRecord? {
+        synchronized(mHistory) {
+            for (r in mHistory) {
                 // If service is not created, and bindService with the flag that is
                 // not BIND_AUTO_CREATE, r.process is null
                 if ((r.process == null || r.process.userId == userId)
-                        && ComponentUtils.isSameComponent(serviceInfo, r.serviceInfo)) {
-                    return r;
+                    && ComponentUtils.isSameComponent(serviceInfo, r.serviceInfo)
+                ) {
+                    return r
                 }
             }
-            return null;
+            return null
         }
     }
 
-    private ServiceRecord findRecordLocked(IServiceConnection connection) {
-        synchronized (mHistory) {
-            for (ServiceRecord r : mHistory) {
+    private fun findRecordLocked(connection: IServiceConnection?): ServiceRecord? {
+        synchronized(mHistory) {
+            for (r in mHistory) {
                 if (r.containConnection(connection)) {
-                    return r;
+                    return r
                 }
             }
-            return null;
+            return null
         }
     }
 
 
-    @Override
-    public ComponentName startService(IBinder caller, Intent service, String resolvedType, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            return startServiceCommon(service, true, userId);
+    override fun startService(
+        caller: IBinder?,
+        service: Intent?,
+        resolvedType: String?,
+        userId: Int
+    ): ComponentName? {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            return startServiceCommon(service, true, userId)
         }
     }
 
-    private ComponentName startServiceCommon(Intent service,
-                                             boolean scheduleServiceArgs, int userId) {
-        ServiceInfo serviceInfo = resolveServiceInfo(service, userId);
-        if (serviceInfo == null) {
-            return null;
-        }
-        ProcessRecord targetApp = startProcessIfNeedLocked(ComponentUtils.getProcessName(serviceInfo),
-                userId,
-                serviceInfo.packageName);
+    private fun startServiceCommon(
+        service: Intent?,
+        scheduleServiceArgs: Boolean, userId: Int
+    ): ComponentName? {
+        val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return null
+        val targetApp = startProcessIfNeedLocked(
+            ComponentUtils.getProcessName(serviceInfo),
+            userId,
+            serviceInfo.packageName
+        )
 
         if (targetApp == null) {
-            VLog.e(TAG, "Unable to start new Process for : " + ComponentUtils.toComponentName(serviceInfo));
-            return null;
+            VLog.e(
+                TAG,
+                "Unable to start new Process for : " + ComponentUtils.toComponentName(serviceInfo)
+            )
+            return null
         }
-        IInterface appThread = targetApp.appThread;
-        ServiceRecord r = findRecordLocked(userId, serviceInfo);
+        val appThread = targetApp.appThread
+        var r = findRecordLocked(userId, serviceInfo)
         if (r == null) {
-            r = new ServiceRecord();
-            r.startId = 0;
-            r.activeSince = SystemClock.elapsedRealtime();
-            r.process = targetApp;
-            r.serviceInfo = serviceInfo;
+            r = ServiceRecord()
+            r.startId = 0
+            r.activeSince = SystemClock.elapsedRealtime()
+            r.process = targetApp
+            r.serviceInfo = serviceInfo
             try {
-                IApplicationThreadCompat.scheduleCreateService(appThread, r, r.serviceInfo, 0);
-            } catch (RemoteException e) {
-                e.printStackTrace();
+                IApplicationThreadCompat.scheduleCreateService(appThread, r, r.serviceInfo, 0)
+            } catch (e: RemoteException) {
+                e.printStackTrace()
             }
-            addRecord(r);
+            addRecord(r)
         }
-        r.lastActivityTime = SystemClock.uptimeMillis();
+        r.lastActivityTime = SystemClock.uptimeMillis()
         if (scheduleServiceArgs) {
-            r.startId++;
-            boolean taskRemoved = serviceInfo.applicationInfo != null
-                    && serviceInfo.applicationInfo.targetSdkVersion < Build.VERSION_CODES.ECLAIR;
+            r.startId++
+            val taskRemoved = serviceInfo.applicationInfo != null
+                    && serviceInfo.applicationInfo.targetSdkVersion < Build.VERSION_CODES.ECLAIR
             try {
-                IApplicationThreadCompat.scheduleServiceArgs(appThread, r, taskRemoved, r.startId, 0, service);
-            } catch (RemoteException e) {
-                e.printStackTrace();
+                IApplicationThreadCompat.scheduleServiceArgs(
+                    appThread,
+                    r,
+                    taskRemoved,
+                    r.startId,
+                    0,
+                    service
+                )
+            } catch (e: RemoteException) {
+                e.printStackTrace()
             }
         }
-        return ComponentUtils.toComponentName(serviceInfo);
+        return ComponentUtils.toComponentName(serviceInfo)
     }
 
-    @Override
-    public int stopService(IBinder caller, Intent service, String resolvedType, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ServiceInfo serviceInfo = resolveServiceInfo(service, userId);
-            if (serviceInfo == null) {
-                return 0;
-            }
-            ServiceRecord r = findRecordLocked(userId, serviceInfo);
-            if (r == null) {
-                return 0;
-            }
-            stopServiceCommon(r, ComponentUtils.toComponentName(serviceInfo));
-            return 1;
+    override fun stopService(
+        caller: IBinder?,
+        service: Intent?,
+        resolvedType: String?,
+        userId: Int
+    ): Int {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return 0
+            val r = findRecordLocked(userId, serviceInfo) ?: return 0
+            this.stopServiceCommon(r, ComponentUtils.toComponentName(serviceInfo))
+            return 1
         }
     }
 
-    @Override
-    public boolean stopServiceToken(ComponentName className, IBinder token, int startId, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ServiceRecord r = (ServiceRecord) token;
+    override fun stopServiceToken(
+        className: ComponentName?,
+        token: IBinder?,
+        startId: Int,
+        userId: Int
+    ): Boolean {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val r = token as ServiceRecord?
             if (r != null && (r.startId == startId || startId == -1)) {
-                stopServiceCommon(r, className);
-                return true;
+                stopServiceCommon(r, className)
+                return true
             }
-
-            return false;
+            return false
         }
     }
 
-    private void stopServiceCommon(ServiceRecord r, ComponentName className) {
-        for (ServiceRecord.IntentBindRecord bindRecord : r.bindings) {
-            for (IServiceConnection connection : bindRecord.connections) {
+    private fun stopServiceCommon(r: ServiceRecord, className: ComponentName?) {
+        for (bindRecord in r.bindings) {
+            for (connection in bindRecord.connections) {
                 // Report to all of the connections that the service is no longer
                 // available.
                 try {
                     if (Build.VERSION.SDK_INT >= 26) {
-                        IServiceConnectionO.connected.call(connection, className, null, true);
+                        IServiceConnectionO.connected.call(connection, className, null, true)
                     } else {
-                        connection.connected(className, null);
+                        connection.connected(className, null)
                     }
-                } catch (RemoteException e) {
-                    e.printStackTrace();
+                } catch (e: RemoteException) {
+                    e.printStackTrace()
                 }
             }
             try {
-                IApplicationThreadCompat.scheduleUnbindService(r.process.appThread, r, bindRecord.intent);
-            } catch (RemoteException e) {
-                e.printStackTrace();
+                IApplicationThreadCompat.scheduleUnbindService(
+                    r.process.appThread,
+                    r,
+                    bindRecord.intent
+                )
+            } catch (e: RemoteException) {
+                e.printStackTrace()
             }
         }
         try {
-            IApplicationThreadCompat.scheduleStopService(r.process.appThread, r);
-        } catch (RemoteException e) {
-            e.printStackTrace();
+            IApplicationThreadCompat.scheduleStopService(r.process.appThread, r)
+        } catch (e: RemoteException) {
+            e.printStackTrace()
         }
-        mHistory.remove(r);
-
+        mHistory.remove(r)
     }
 
-    @Override
-    public int bindService(IBinder caller, IBinder token, Intent service, String resolvedType,
-                           IServiceConnection connection, int flags, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ServiceInfo serviceInfo = resolveServiceInfo(service, userId);
-            if (serviceInfo == null) {
-                return 0;
-            }
+    override fun bindService(
+        caller: IBinder?, token: IBinder?, service: Intent?, resolvedType: String?,
+        connection: IServiceConnection, flags: Int, userId: Int
+    ): Int {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return 0
 
-            ComponentName component = service.getComponent();
-            LogMessage logMessage = new LogMessage.BindService(serviceInfo.packageName, component != null ? component.getClassName() : "", serviceInfo.exported);
-            LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
-            VLoggingManagerService.get().log(holder);
+            val component = service!!.component
+            val logMessage: LogMessage = LogMessage.BindService(
+                serviceInfo.packageName,
+                component?.className ?: "",
+                serviceInfo.exported
+            )
+            val holder = LogMessageHolder.Builder(logMessage).build()
+            VLoggingManagerService.get().log(holder)
 
-            ServiceRecord r = findRecordLocked(userId, serviceInfo);
-            boolean firstLaunch = r == null;
+            var r = findRecordLocked(userId, serviceInfo)
+            val firstLaunch = r == null
             if (firstLaunch) {
-                if ((flags & Context.BIND_AUTO_CREATE) != 0) {
-                    startServiceCommon(service, false, userId);
-                    r = findRecordLocked(userId, serviceInfo);
+                if ((flags and Context.BIND_AUTO_CREATE) != 0) {
+                    startServiceCommon(service, false, userId)
+                    r = findRecordLocked(userId, serviceInfo)
                 }
             }
             if (r == null) {
-                return 0;
+                return 0
             }
-            ServiceRecord.IntentBindRecord boundRecord = r.peekBinding(service);
-            if (boundRecord != null && boundRecord.binder != null && boundRecord.binder.pingBinder()) {
+            val boundRecord = r.peekBinding(service)
+            if (boundRecord?.binder != null && boundRecord.binder.pingBinder()) {
                 if (boundRecord.doRebind) {
                     try {
-                        IApplicationThreadCompat.scheduleBindService(r.process.appThread, r, service, true, 0);
-                    } catch (RemoteException e) {
-                        Timber.e(e);
+                        IApplicationThreadCompat.scheduleBindService(
+                            r.process.appThread,
+                            r,
+                            service,
+                            true,
+                            0
+                        )
+                    } catch (e: RemoteException) {
+                        e(e)
                     }
                 }
-                ComponentName componentName = new ComponentName(r.serviceInfo.packageName, r.serviceInfo.name);
-                connectService(connection, componentName, boundRecord, false);
+                val componentName = ComponentName(r.serviceInfo.packageName, r.serviceInfo.name)
+                connectService(connection, componentName, boundRecord, false)
             } else {
                 try {
-                    IApplicationThreadCompat.scheduleBindService(r.process.appThread, r, service, false, 0);
-                } catch (RemoteException e) {
-                    Timber.e(e);
+                    IApplicationThreadCompat.scheduleBindService(
+                        r.process.appThread,
+                        r,
+                        service,
+                        false,
+                        0
+                    )
+                } catch (e: RemoteException) {
+                    e(e)
                 }
             }
-            r.lastActivityTime = SystemClock.uptimeMillis();
-            r.addToBoundIntent(service, connection);
-            return 1;
+            r.lastActivityTime = SystemClock.uptimeMillis()
+            r.addToBoundIntent(service, connection)
+            return 1
         }
     }
 
 
-    @Override
-    public boolean unbindService(IServiceConnection connection, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ServiceRecord r = findRecordLocked(connection);
-            if (r == null) {
-                return false;
-            }
+    override fun unbindService(connection: IServiceConnection?, userId: Int): Boolean {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val r = findRecordLocked(connection) ?: return false
 
-            for (ServiceRecord.IntentBindRecord bindRecord : r.bindings) {
+            for (bindRecord in r.bindings) {
                 if (!bindRecord.containConnection(connection)) {
-                    continue;
+                    continue
                 }
-                bindRecord.removeConnection(connection);
+                bindRecord.removeConnection(connection)
                 try {
-                    IApplicationThreadCompat.scheduleUnbindService(r.process.appThread, r, bindRecord.intent);
-                } catch (RemoteException e) {
-                    e.printStackTrace();
+                    IApplicationThreadCompat.scheduleUnbindService(
+                        r.process.appThread,
+                        r,
+                        bindRecord.intent
+                    )
+                } catch (e: RemoteException) {
+                    e.printStackTrace()
                 }
             }
 
             if (r.startId <= 0 && r.getConnectionCount() <= 0) {
                 try {
-                    IApplicationThreadCompat.scheduleStopService(r.process.appThread, r);
-                } catch (RemoteException e) {
-                    e.printStackTrace();
+                    IApplicationThreadCompat.scheduleStopService(r.process.appThread, r)
+                } catch (e: RemoteException) {
+                    e.printStackTrace()
                 }
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-                    mHistory.remove(r);
+                    mHistory.remove(r)
                 }
             }
-            return true;
+            return true
         }
     }
 
-    @Override
-    public void unbindFinished(IBinder token, Intent service, boolean doRebind, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ServiceRecord r = (ServiceRecord) token;
+    override fun unbindFinished(token: IBinder?, service: Intent?, doRebind: Boolean, userId: Int) {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val r = token as ServiceRecord?
             if (r != null) {
-                ServiceRecord.IntentBindRecord boundRecord = r.peekBinding(service);
+                val boundRecord = r.peekBinding(service)
                 if (boundRecord != null) {
-                    boundRecord.doRebind = doRebind;
+                    boundRecord.doRebind = doRebind
                 }
             }
         }
     }
 
 
-    @Override
-    public boolean isVAServiceToken(IBinder token) {
-        return token instanceof ServiceRecord;
+    override fun isVAServiceToken(token: IBinder?): Boolean {
+        return token is ServiceRecord
     }
 
 
-    @Override
-    public void serviceDoneExecuting(IBinder token, int type, int startId, int res, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ServiceRecord r = (ServiceRecord) token;
-            if (r == null) {
-                return;
-            }
+    override fun serviceDoneExecuting(
+        token: IBinder?,
+        type: Int,
+        startId: Int,
+        res: Int,
+        userId: Int
+    ) {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val r = token as ServiceRecord? ?: return
             if (ActivityManagerCompat.SERVICE_DONE_EXECUTING_STOP == type) {
-                mHistory.remove(r);
+                mHistory.remove(r)
             }
         }
     }
 
-    @Override
-    public IBinder peekService(Intent service, String resolvedType, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ServiceInfo serviceInfo = resolveServiceInfo(service, userId);
-            if (serviceInfo == null) {
-                return null;
-            }
-            ServiceRecord r = findRecordLocked(userId, serviceInfo);
+    override fun peekService(service: Intent?, resolvedType: String?, userId: Int): IBinder? {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return null
+            val r = findRecordLocked(userId, serviceInfo)
             if (r != null) {
-                ServiceRecord.IntentBindRecord boundRecord = r.peekBinding(service);
+                val boundRecord = r.peekBinding(service)
                 if (boundRecord != null) {
-                    return boundRecord.binder;
+                    return boundRecord.binder
                 }
             }
-            return null;
+            return null
         }
     }
 
-    @Override
-    public void publishService(IBinder token, Intent intent, IBinder service, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ServiceRecord r = (ServiceRecord) token;
+    override fun publishService(token: IBinder?, intent: Intent?, service: IBinder?, userId: Int) {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val r = token as ServiceRecord?
             if (r != null) {
-                ServiceRecord.IntentBindRecord boundRecord = r.peekBinding(intent);
+                val boundRecord = r.peekBinding(intent)
                 if (boundRecord != null) {
-                    boundRecord.binder = service;
-                    for (IServiceConnection conn : boundRecord.connections) {
-                        ComponentName component = ComponentUtils.toComponentName(r.serviceInfo);
-                        connectService(conn, component, boundRecord, false);
+                    boundRecord.binder = service
+                    for (conn in boundRecord.connections) {
+                        val component = ComponentUtils.toComponentName(r.serviceInfo)
+                        connectService(conn, component, boundRecord, false)
                     }
                 }
             }
         }
     }
 
-    private void connectService(IServiceConnection conn, ComponentName component, ServiceRecord.IntentBindRecord r, boolean dead) {
+    private fun connectService(
+        conn: IServiceConnection,
+        component: ComponentName?,
+        r: IntentBindRecord,
+        dead: Boolean
+    ) {
         try {
-            BinderDelegateService delegateService = new BinderDelegateService(component, r.binder);
+            val delegateService = BinderDelegateService(component, r.binder)
             if (Build.VERSION.SDK_INT >= 26) {
-                IServiceConnectionO.connected.call(conn, component, delegateService, dead);
+                IServiceConnectionO.connected.call(conn, component, delegateService, dead)
             } else {
-                conn.connected(component, delegateService);
+                conn.connected(component, delegateService)
             }
-        } catch (RemoteException e) {
-            e.printStackTrace();
+        } catch (e: RemoteException) {
+            e.printStackTrace()
         }
     }
 
-    @Override
-    public VParceledListSlice<ActivityManager.RunningServiceInfo> getServices(int maxNum, int flags, int userId) {
-        enforceCallingUser(userId);
-        synchronized (mHistory) {
-            List<ActivityManager.RunningServiceInfo> services = new ArrayList<>(mHistory.size());
-            for (ServiceRecord r : mHistory) {
+    override fun getServices(
+        maxNum: Int,
+        flags: Int,
+        userId: Int
+    ): VParceledListSlice<ActivityManager.RunningServiceInfo?> {
+        enforceCallingUser(userId)
+        synchronized(mHistory) {
+            val services: MutableList<ActivityManager.RunningServiceInfo?> =
+                ArrayList(mHistory.size)
+            for (r in mHistory) {
                 if (r.process.userId != userId) {
-                    continue;
+                    continue
                 }
-                ActivityManager.RunningServiceInfo info = new ActivityManager.RunningServiceInfo();
-                info.uid = r.process.vuid;
-                info.pid = r.process.pid;
-                ProcessRecord processRecord = findProcessLocked(r.process.pid);
+                val info = ActivityManager.RunningServiceInfo()
+                info.uid = r.process.vuid
+                info.pid = r.process.pid
+                val processRecord = findProcessLocked(r.process.pid)
                 if (processRecord != null) {
-                    info.process = processRecord.processName;
-                    info.clientPackage = processRecord.info.packageName;
+                    info.process = processRecord.processName
+                    info.clientPackage = processRecord.info.packageName
                 }
-                info.activeSince = r.activeSince;
-                info.lastActivityTime = r.lastActivityTime;
-                info.clientCount = r.getClientCount();
-                info.service = ComponentUtils.toComponentName(r.serviceInfo);
-                info.started = r.startId > 0;
-                services.add(info);
+                info.activeSince = r.activeSince
+                info.lastActivityTime = r.lastActivityTime
+                info.clientCount = r.clientCount
+                info.service = ComponentUtils.toComponentName(r.serviceInfo)
+                info.started = r.startId > 0
+                services.add(info)
             }
-            return new VParceledListSlice<>(services);
+            return VParceledListSlice(services)
         }
     }
 
-    @Override
-    public void setServiceForeground(ComponentName className, IBinder token, int id, Notification notification,
-                                     boolean removeNotification, int userId) {
-        enforceCallingUser(userId);
-        ServiceRecord r = (ServiceRecord) token;
+    override fun setServiceForeground(
+        className: ComponentName?, token: IBinder?, id: Int, notification: Notification?,
+        removeNotification: Boolean, userId: Int
+    ) {
+        enforceCallingUser(userId)
+        val r = token as ServiceRecord?
         if (r != null) {
             if (id != 0) {
-                if (notification == null) {
-                    throw new IllegalArgumentException("null notification");
-                }
+                requireNotNull(notification) { "null notification" }
                 if (r.foregroundId != id) {
                     if (r.foregroundId != 0) {
-                        cancelNotification(userId, r.foregroundId, r.serviceInfo.packageName);
+                        cancelNotification(userId, r.foregroundId, r.serviceInfo.packageName)
                     }
-                    r.foregroundId = id;
+                    r.foregroundId = id
                 }
-                r.foregroundNoti = notification;
-                postNotification(userId, id, r.serviceInfo.packageName, notification);
+                r.foregroundNoti = notification
+                postNotification(userId, id, r.serviceInfo.packageName, notification)
             } else {
                 if (removeNotification) {
-                    cancelNotification(userId, r.foregroundId, r.serviceInfo.packageName);
-                    r.foregroundId = 0;
-                    r.foregroundNoti = null;
+                    cancelNotification(userId, r.foregroundId, r.serviceInfo.packageName)
+                    r.foregroundId = 0
+                    r.foregroundNoti = null
                 }
             }
         }
     }
 
-    private void cancelNotification(int userId, int id, String pkg) {
-        id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId);
-        String tag = VNotificationManager.get().dealNotificationTag(id, pkg, null, userId);
-        nm.cancel(tag, id);
+    private fun cancelNotification(userId: Int, id: Int, pkg: String?) {
+        var id = id
+        id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
+        val tag = VNotificationManager.get().dealNotificationTag(id, pkg, null, userId)
+        nm.cancel(tag, id)
     }
 
-    private void postNotification(int userId, int id, String pkg, Notification notification) {
-        id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId);
-        String tag = VNotificationManager.get().dealNotificationTag(id, pkg, null, userId);
-//        VNotificationManager.get().dealNotification(id, notification, pkg);
-        VNotificationManager.get().addNotification(id, tag, pkg, userId);
+    private fun postNotification(userId: Int, id: Int, pkg: String?, notification: Notification?) {
+        var id = id
+        id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
+        val tag = VNotificationManager.get().dealNotificationTag(id, pkg, null, userId)
+        //        VNotificationManager.get().dealNotification(id, notification, pkg);
+        VNotificationManager.get().addNotification(id, tag, pkg, userId)
         try {
-            nm.notify(tag, id, notification);
-        } catch (Throwable e) {
-            e.printStackTrace();
+            nm.notify(tag, id, notification)
+        } catch (e: Throwable) {
+            e.printStackTrace()
         }
     }
 
-    @Override
-    public void processRestarted(String packageName, String processName, int userId) {
-        enforceCallingUser(userId);
-        int callingPid = getCallingPid();
-        int appId = VAppManagerService.get().getAppId(packageName);
-        int uid = VUserHandle.getUid(userId, appId);
-        synchronized (this) {
-            ProcessRecord app = findProcessLocked(callingPid);
+    override fun processRestarted(packageName: String?, processName: String?, userId: Int) {
+        enforceCallingUser(userId)
+        val callingPid = getCallingPid()
+        val appId = VAppManagerService.get().getAppId(packageName)
+        val uid = VUserHandle.getUid(userId, appId)
+        synchronized(this) {
+            val app = findProcessLocked(callingPid)
             if (app == null) {
-                ApplicationInfo appInfo = VPackageManagerService.get().getApplicationInfo(packageName, 0, userId);
-                appInfo.flags |= ApplicationInfo.FLAG_HAS_CODE;
-                String stubProcessName = getProcessName(callingPid);
-                int vpid = parseVPid(stubProcessName);
+                val appInfo = VPackageManagerService.get().getApplicationInfo(packageName, 0, userId) ?: return
+                appInfo.flags = appInfo.flags or ApplicationInfo.FLAG_HAS_CODE
+                val stubProcessName = getProcessName(callingPid)
+                val vpid = parseVPid(stubProcessName)
                 if (vpid != -1) {
-                    performStartProcessLocked(uid, vpid, appInfo, processName);
+                    performStartProcessLocked(uid, vpid, appInfo, processName)
                 }
             }
         }
     }
 
-    private int parseVPid(String stubProcessName) {
-        String prefix = VirtualCore.get().getHostPkg() + ":p";
+    private fun parseVPid(stubProcessName: String?): Int {
+        val prefix = VirtualCore.get().hostPkg + ":p"
         if (stubProcessName != null && stubProcessName.startsWith(prefix)) {
             try {
-                return Integer.parseInt(stubProcessName.substring(prefix.length()));
-            } catch (NumberFormatException e) {
+                return stubProcessName.substring(prefix.length).toInt()
+            } catch (e: NumberFormatException) {
                 // ignore
             }
         }
-        return -1;
+        return -1
     }
 
 
-    private String getProcessName(int pid) {
-        for (ActivityManager.RunningAppProcessInfo info : am.getRunningAppProcesses()) {
+    private fun getProcessName(pid: Int): String? {
+        for (info in am.runningAppProcesses) {
             if (info.pid == pid) {
-                return info.processName;
+                return info.processName
             }
         }
-        return null;
+        return null
     }
 
 
-    private void attachClient(int pid, final IBinder clientBinder) {
-        final IVClient client = IVClient.Stub.asInterface(clientBinder);
+    private fun attachClient(pid: Int, clientBinder: IBinder?) {
+        val client = IVClient.Stub.asInterface(clientBinder)
         if (client == null) {
-            killProcess(pid);
-            return;
+            Process.killProcess(pid)
+            return
         }
-        IInterface thread = null;
+        var thread: IInterface? = null
         try {
-            thread = ApplicationThreadCompat.asInterface(client.getAppThread());
-        } catch (RemoteException e) {
+            thread = ApplicationThreadCompat.asInterface(client.getAppThread())
+        } catch (e: RemoteException) {
             // process has dead
         }
         if (thread == null) {
-            killProcess(pid);
-            return;
+            Process.killProcess(pid)
+            return
         }
-        ProcessRecord app = null;
+        var app: ProcessRecord? = null
         try {
-            IBinder token = client.getToken();
-            if (token instanceof ProcessRecord) {
-                app = (ProcessRecord) token;
+            val token = client.getToken()
+            if (token is ProcessRecord) {
+                app = token
             }
-        } catch (RemoteException e) {
+        } catch (e: RemoteException) {
             // process has dead
         }
         if (app == null) {
-            killProcess(pid);
-            return;
+            Process.killProcess(pid)
+            return
         }
         try {
-            final ProcessRecord record = app;
-            clientBinder.linkToDeath(new DeathRecipient() {
-                @Override
-                public void binderDied() {
-                    clientBinder.unlinkToDeath(this, 0);
-                    onProcessDead(record);
+            val record: ProcessRecord = app
+            clientBinder!!.linkToDeath(object : IBinder.DeathRecipient {
+                override fun binderDied() {
+                    clientBinder.unlinkToDeath(this, 0)
+                    onProcessDead(record)
                 }
-            }, 0);
-        } catch (RemoteException e) {
-            e.printStackTrace();
+            }, 0)
+        } catch (e: RemoteException) {
+            e.printStackTrace()
         }
-        app.client = client;
-        app.appThread = thread;
-        app.pid = pid;
-        synchronized (mProcessNames) {
-            mProcessNames.put(app.processName, app.vuid, app);
-            mPidsSelfLocked.put(app.pid, app);
-        }
-    }
-
-    private void onProcessDead(ProcessRecord record) {
-        mProcessNames.remove(record.processName, record.vuid);
-        mPidsSelfLocked.remove(record.pid);
-        processDead(record);
-        record.lock.open();
-
-        LogMessage message = new LogMessage.AppDeath();
-        LogMessageHolder holder = new LogMessageHolder.Builder(message)
-                .setPackageName(record.processName)
-                .setUserId(record.userId)
-                .setPid(record.pid)
-                .build();
-
-        VLoggingManagerService.get().log(holder);
-    }
-
-    @Override
-    public int getFreeStubCount() {
-        return VASettings.STUB_COUNT - mPidsSelfLocked.size();
-    }
-
-    @Override
-    public int initProcess(String packageName, String processName, int userId) {
-        enforceCallingUser(userId);
-        synchronized (this) {
-            ProcessRecord r = startProcessIfNeedLocked(processName, userId, packageName);
-            return r != null ? r.vpid : -1;
+        app.client = client
+        app.appThread = thread
+        app.pid = pid
+        synchronized(mProcessNames) {
+            mProcessNames.put(app.processName, app.vuid, app)
+            mPidsSelfLocked.put(app.pid, app)
         }
     }
 
-    ProcessRecord startProcessIfNeedLocked(String processName, int userId, String packageName) {
-        if (VActivityManagerService.get().getFreeStubCount() < 3) {
+    private fun onProcessDead(record: ProcessRecord) {
+        mProcessNames.remove(record.processName, record.vuid)
+        mPidsSelfLocked.remove(record.pid)
+        processDead(record)
+        record.lock.open()
+
+        val message: LogMessage = AppDeath()
+        val holder = LogMessageHolder.Builder(message)
+            .setPackageName(record.processName)
+            .setUserId(record.userId)
+            .setPid(record.pid)
+            .build()
+
+        VLoggingManagerService.get().log(holder)
+    }
+
+    override fun getFreeStubCount(): Int {
+        return VASettings.STUB_COUNT - mPidsSelfLocked.size()
+    }
+
+    override fun initProcess(packageName: String?, processName: String?, userId: Int): Int {
+        enforceCallingUser(userId)
+        synchronized(this) {
+            val r = startProcessIfNeedLocked(processName, userId, packageName)
+            return r?.vpid ?: -1
+        }
+    }
+
+    fun startProcessIfNeedLocked(
+        processName: String?,
+        userId: Int,
+        packageName: String?
+    ): ProcessRecord? {
+        if (get().freeStubCount < 3) {
             // run GC
-            killAllApps();
+            killAllApps()
         }
-        PackageSetting ps = PackageCacheManager.getSetting(packageName);
-        ApplicationInfo info = VPackageManagerService.get().getApplicationInfo(packageName, 0, userId);
+        val ps = PackageCacheManager.getSetting(packageName)
+        val info = VPackageManagerService.get().getApplicationInfo(packageName, 0, userId)
         if (ps == null || info == null) {
-            return null;
+            return null
         }
         if (!ps.isLaunched(userId)) {
-            sendFirstLaunchBroadcast(ps, userId);
-            ps.setLaunched(userId, true);
-            VAppManagerService.get().savePersistenceData();
+            sendFirstLaunchBroadcast(ps, userId)
+            ps.setLaunched(userId, true)
+            VAppManagerService.get().savePersistenceData()
         }
-        int uid = VUserHandle.getUid(userId, ps.appId);
-        ProcessRecord app = mProcessNames.get(processName, uid);
+        val uid = VUserHandle.getUid(userId, ps.appId)
+        var app = mProcessNames.get(processName, uid)
         if (app != null && app.client.asBinder().pingBinder()) {
-            return app;
+            return app
         }
-        int vpid = queryFreeStubProcessLocked();
+        val vpid = queryFreeStubProcessLocked()
         if (vpid == -1) {
-            return null;
+            return null
         }
-        app = performStartProcessLocked(uid, vpid, info, processName);
-        if (app != null) {
-            app.pkgList.add(info.packageName);
-        }
-        return app;
+        app = performStartProcessLocked(uid, vpid, info, processName)
+        app?.pkgList?.add(info.packageName)
+        return app
     }
 
-    private void sendFirstLaunchBroadcast(PackageSetting ps, int userId) {
-        Intent intent = new Intent(Intent.ACTION_PACKAGE_FIRST_LAUNCH, Uri.fromParts("package", ps.packageName, null));
-        intent.setPackage(ps.packageName);
-        intent.putExtra(Intent.EXTRA_UID, VUserHandle.getUid(ps.appId, userId));
-        intent.putExtra("android.intent.extra.user_handle", userId);
-        sendBroadcastAsUser(intent, null);
+    private fun sendFirstLaunchBroadcast(ps: PackageSetting, userId: Int) {
+        val intent = Intent(
+            Intent.ACTION_PACKAGE_FIRST_LAUNCH,
+            Uri.fromParts("package", ps.packageName, null)
+        )
+        intent.setPackage(ps.packageName)
+        intent.putExtra(Intent.EXTRA_UID, VUserHandle.getUid(ps.appId, userId))
+        intent.putExtra("android.intent.extra.user_handle", userId)
+        sendBroadcastAsUser(intent, null)
     }
 
 
-    @Override
-    public int getUidByPid(int pid) {
-        synchronized (mPidsSelfLocked) {
-            ProcessRecord r = findProcessLocked(pid);
+    override fun getUidByPid(pid: Int): Int {
+        synchronized(mPidsSelfLocked) {
+            val r = findProcessLocked(pid)
             if (r != null) {
-                return r.vuid;
+                return r.vuid
             }
         }
-        return Process.myUid();
+        return Process.myUid()
     }
 
-    private ProcessRecord performStartProcessLocked(int vuid, int vpid, ApplicationInfo info, String processName) {
-        ProcessRecord app = new ProcessRecord(info, processName, vuid, vpid);
-        Bundle extras = new Bundle();
-        BundleCompat.putBinder(extras, "_VA_|_binder_", app);
-        extras.putInt("_VA_|_vuid_", vuid);
-        extras.putString("_VA_|_process_", processName);
-        extras.putString("_VA_|_pkg_", info.packageName);
-        Bundle res = ProviderCall.call(VASettings.getStubAuthority(vpid), "_VA_|_init_process_", null, extras);
+    private fun performStartProcessLocked(
+        vuid: Int,
+        vpid: Int,
+        info: ApplicationInfo,
+        processName: String?
+    ): ProcessRecord? {
+        val app = ProcessRecord(info, processName, vuid, vpid)
+        val extras = Bundle()
+        BundleCompat.putBinder(extras, "_VA_|_binder_", app)
+        extras.putInt("_VA_|_vuid_", vuid)
+        extras.putString("_VA_|_process_", processName)
+        extras.putString("_VA_|_pkg_", info.packageName)
+        val res = ProviderCall.call(
+            VASettings.getStubAuthority(vpid),
+            "_VA_|_init_process_",
+            null,
+            extras
+        )
         if (res == null) {
-            return null;
+            return null
         }
-        int pid = res.getInt("_VA_|_pid_");
-        IBinder clientBinder = BundleCompat.getBinder(res, "_VA_|_client_");
-        attachClient(pid, clientBinder);
-        return app;
+        val pid = res.getInt("_VA_|_pid_")
+        val clientBinder = BundleCompat.getBinder(res, "_VA_|_client_")
+        attachClient(pid, clientBinder)
+        return app
     }
 
-    private int queryFreeStubProcessLocked() {
-        for (int vpid = 0; vpid < VASettings.STUB_COUNT; vpid++) {
-            int N = mPidsSelfLocked.size();
-            boolean using = false;
+    private fun queryFreeStubProcessLocked(): Int {
+        for (vpid in 0..<VASettings.STUB_COUNT) {
+            var N = mPidsSelfLocked.size()
+            var using = false
             while (N-- > 0) {
-                ProcessRecord r = mPidsSelfLocked.valueAt(N);
+                val r = mPidsSelfLocked.valueAt(N)
                 if (r.vpid == vpid) {
-                    using = true;
-                    break;
+                    using = true
+                    break
                 }
             }
             if (using) {
-                continue;
+                continue
             }
-            return vpid;
+            return vpid
         }
-        return -1;
+        return -1
     }
 
-    @Override
-    public boolean isAppProcess(String processName) {
-        return parseVPid(processName) != -1;
+    override fun isAppProcess(processName: String?): Boolean {
+        return parseVPid(processName) != -1
     }
 
-    @Override
-    public boolean isAppPid(int pid) {
-        synchronized (mPidsSelfLocked) {
-            return findProcessLocked(pid) != null;
+    override fun isAppPid(pid: Int): Boolean {
+        synchronized(mPidsSelfLocked) {
+            return findProcessLocked(pid) != null
         }
     }
 
-    @Override
-    public String getAppProcessName(int pid) {
-        synchronized (mPidsSelfLocked) {
-            ProcessRecord r = mPidsSelfLocked.get(pid);
+    override fun getAppProcessName(pid: Int): String? {
+        synchronized(mPidsSelfLocked) {
+            val r = mPidsSelfLocked.get(pid)
             if (r != null) {
-                return r.processName;
+                return r.processName
             }
         }
-        return null;
+        return null
     }
 
-    @Override
-    public List<String> getProcessPkgList(int pid) {
-        synchronized (mPidsSelfLocked) {
-            ProcessRecord r = mPidsSelfLocked.get(pid);
+    override fun getProcessPkgList(pid: Int): MutableList<String?> {
+        synchronized(mPidsSelfLocked) {
+            val r = mPidsSelfLocked.get(pid)
             if (r != null) {
-                return new ArrayList<>(r.pkgList);
+                return ArrayList(r.pkgList)
             }
         }
-        return Collections.emptyList();
+        return mutableListOf()
     }
 
-    @Override
-    public void killAllApps() {
-        synchronized (mPidsSelfLocked) {
-            for (int i = 0; i < mPidsSelfLocked.size(); i++) {
-                ProcessRecord r = mPidsSelfLocked.valueAt(i);
-                killProcess(r.pid);
+    override fun killAllApps() {
+        synchronized(mPidsSelfLocked) {
+            for (i in 0..<mPidsSelfLocked.size()) {
+                val r = mPidsSelfLocked.valueAt(i)
+                Process.killProcess(r.pid)
             }
         }
     }
 
-    @Override
-    public void killAppByPkg(final String pkg, int userId) {
-        enforceCallingUser(userId);
-        assertPackageMatchesCallingUid(pkg);
+    override fun killAppByPkg(pkg: String?, userId: Int) {
+        enforceCallingUser(userId)
+        assertPackageMatchesCallingUid(pkg)
 
-        synchronized (mProcessNames) {
-            ArrayMap<String, SparseArray<ProcessRecord>> map = mProcessNames.getMap();
-            int N = map.size();
+        synchronized(mProcessNames) {
+            val map = mProcessNames.getMap()
+            var N: Int = map.size
             while (N-- > 0) {
-                SparseArray<ProcessRecord> uids = map.valueAt(N);
-                for (int i = 0; i < uids.size(); i++) {
-                    ProcessRecord r = uids.valueAt(i);
+                val uids = map.valueAt(N)
+                for (i in 0..<uids.size()) {
+                    val r = uids.valueAt(i)
                     if (userId != VUserHandle.USER_ALL) {
-                        if (r.userId != userId) {
-                            continue;
+                        if (r?.userId != userId) {
+                            continue
                         }
                     }
-                    if (r.pkgList.contains(pkg)) {
-                        killProcess(r.pid);
+                    if (r?.pkgList?.contains(pkg) == true) {
+                        Process.killProcess(r.pid)
                     }
                 }
             }
         }
     }
 
-    @Override
-    public boolean isAppRunning(String packageName, int userId) {
-        enforceCallingUser(userId);
-        assertPackageMatchesCallingUid(packageName);
+    override fun isAppRunning(packageName: String?, userId: Int): Boolean {
+        enforceCallingUser(userId)
+        assertPackageMatchesCallingUid(packageName)
 
-        boolean running = false;
-        synchronized (mPidsSelfLocked) {
-            int N = mPidsSelfLocked.size();
+        var running = false
+        synchronized(mPidsSelfLocked) {
+            var N = mPidsSelfLocked.size()
             while (N-- > 0) {
-                ProcessRecord r = mPidsSelfLocked.valueAt(N);
-                if (r.userId == userId && r.info.packageName.equals(packageName)) {
-                    running = true;
-                    break;
+                val r = mPidsSelfLocked.valueAt(N)
+                if (r.userId == userId && r.info.packageName == packageName) {
+                    running = true
+                    break
                 }
             }
-            return running;
+            return running
         }
     }
 
-    @Override
-    public void killApplicationProcess(final String processName, int uid) {
-        synchronized (mProcessNames) {
-            ProcessRecord r = mProcessNames.get(processName, uid);
+    override fun killApplicationProcess(processName: String?, uid: Int) {
+        synchronized(mProcessNames) {
+            val r = mProcessNames.get(processName, uid)
             if (r != null) {
-                killProcess(r.pid);
+                Process.killProcess(r.pid)
             }
         }
     }
 
-    @Override
-    public void dump() {
-
+    override fun dump() {
     }
 
-    @Override
-    public void registerProcessObserver(IProcessObserver observer) {
-
+    override fun registerProcessObserver(observer: IProcessObserver?) {
     }
 
-    @Override
-    public void unregisterProcessObserver(IProcessObserver observer) {
-
+    override fun unregisterProcessObserver(observer: IProcessObserver?) {
     }
 
-    @Override
-    public String getInitialPackage(int pid) {
-        synchronized (mPidsSelfLocked) {
-            ProcessRecord r = mPidsSelfLocked.get(pid);
+    override fun getInitialPackage(pid: Int): String? {
+        synchronized(mPidsSelfLocked) {
+            val r = mPidsSelfLocked.get(pid)
             if (r != null) {
-                return r.info.packageName;
+                return r.info.packageName
             }
-            return null;
+            return null
         }
     }
 
-    @Override
-    public void handleApplicationCrash() {
+    override fun handleApplicationCrash() {
         // Nothing
     }
 
-    @Override
-    public void appDoneExecuting() {
-        synchronized (mPidsSelfLocked) {
-            ProcessRecord r = mPidsSelfLocked.get(VBinder.getCallingPid());
+    override fun appDoneExecuting() {
+        synchronized(mPidsSelfLocked) {
+            val r = mPidsSelfLocked.get(VBinder.getCallingPid())
             if (r != null) {
-                r.doneExecuting = true;
-                r.lock.open();
+                r.doneExecuting = true
+                r.lock.open()
             }
         }
     }
 
 
     /**
-     * Should guard by {@link VActivityManagerService#mPidsSelfLocked}
-     *
+     * Should guard by [mPidsSelfLocked]
+     * 
      * @param pid pid
      */
-    public ProcessRecord findProcessLocked(int pid) {
-        return mPidsSelfLocked.get(pid);
+    private fun findProcessLocked(pid: Int): ProcessRecord? {
+        return mPidsSelfLocked.get(pid)
     }
 
     /**
-     * Should guard by {@link VActivityManagerService#mProcessNames}
-     *
+     * Should guard by [mProcessNames]
+     * 
      * @param uid vuid
      */
-    public ProcessRecord findProcessLocked(String processName, int uid) {
-        return mProcessNames.get(processName, uid);
+    private fun findProcessLocked(processName: String?, uid: Int): ProcessRecord? {
+        return mProcessNames.get(processName, uid)
     }
 
-    public int stopUser(int userHandle, IStopUserCallback.Stub stub) {
-        synchronized (mPidsSelfLocked) {
-            int N = mPidsSelfLocked.size();
+    fun stopUser(userHandle: Int, stub: IStopUserCallback.Stub): Int {
+        synchronized(mPidsSelfLocked) {
+            var N = mPidsSelfLocked.size()
             while (N-- > 0) {
-                ProcessRecord r = mPidsSelfLocked.valueAt(N);
+                val r = mPidsSelfLocked.valueAt(N)
                 if (r.userId == userHandle) {
-                    killProcess(r.pid);
+                    Process.killProcess(r.pid)
                 }
             }
         }
         try {
-            stub.userStopped(userHandle);
-        } catch (RemoteException e) {
-            e.printStackTrace();
+            stub.userStopped(userHandle)
+        } catch (e: RemoteException) {
+            e.printStackTrace()
         }
-        return 0;
+        return 0
     }
 
-    public void sendOrderedBroadcastAsUser(Intent intent, VUserHandle user, String receiverPermission,
-                                           BroadcastReceiver resultReceiver, Handler scheduler, int initialCode,
-                                           String initialData, Bundle initialExtras) {
-        Context context = VirtualCore.get().getContext();
+    fun sendOrderedBroadcastAsUser(
+        intent: Intent, user: VUserHandle?, receiverPermission: String?,
+        resultReceiver: BroadcastReceiver?, scheduler: Handler?, initialCode: Int,
+        initialData: String?, initialExtras: Bundle?
+    ) {
+        val context = VirtualCore.get().context
         if (user != null) {
-            intent.putExtra("_VA_|_user_id_", user.getIdentifier());
+            intent.putExtra("_VA_|_user_id_", user.identifier)
         }
         // TODO: checkPermission
-        context.sendOrderedBroadcast(intent, null/* permission */, resultReceiver, scheduler, initialCode, initialData,
-                initialExtras);
+        context.sendOrderedBroadcast(
+            intent, null,  /* permission */resultReceiver, scheduler, initialCode, initialData,
+            initialExtras
+        )
     }
 
-    public void sendBroadcastAsUser(Intent intent, VUserHandle user) {
-        SpecialComponentList.protectIntent(intent);
-        Context context = VirtualCore.get().getContext();
+    fun sendBroadcastAsUser(intent: Intent, user: VUserHandle?) {
+        SpecialComponentList.protectIntent(intent)
+        val context = VirtualCore.get().context
         if (user != null) {
-            intent.putExtra("_VA_|_user_id_", user.getIdentifier());
+            intent.putExtra("_VA_|_user_id_", user.identifier)
         }
-        context.sendBroadcast(intent);
+        context.sendBroadcast(intent)
     }
 
-    public boolean bindServiceAsUser(Intent service, ServiceConnection connection, int flags, VUserHandle user) {
-        service = new Intent(service);
+    fun bindServiceAsUser(
+        service: Intent?,
+        connection: ServiceConnection,
+        flags: Int,
+        user: VUserHandle?
+    ): Boolean {
+        var service = service
+        service = Intent(service)
         if (user != null) {
-            service.putExtra("_VA_|_user_id_", user.getIdentifier());
+            service.putExtra("_VA_|_user_id_", user.identifier)
         }
-        return VirtualCore.get().getContext().bindService(service, connection, flags);
+        return VirtualCore.get().context.bindService(service, connection, flags)
     }
 
-    public void sendBroadcastAsUser(Intent intent, VUserHandle user, String permission) {
-        SpecialComponentList.protectIntent(intent);
-        Context context = VirtualCore.get().getContext();
+    fun sendBroadcastAsUser(intent: Intent, user: VUserHandle?, permission: String?) {
+        SpecialComponentList.protectIntent(intent)
+        val context = VirtualCore.get().context
         if (user != null) {
-            intent.putExtra("_VA_|_user_id_", user.getIdentifier());
+            intent.putExtra("_VA_|_user_id_", user.identifier)
         }
         // TODO: checkPermission
-        context.sendBroadcast(intent);
+        context.sendBroadcast(intent)
     }
 
-    boolean handleStaticBroadcast(int appId, ActivityInfo info, Intent intent,
-                                  PendingResultData result) {
-        Intent realIntent = intent.getParcelableExtra("_VA_|_intent_");
-        ComponentName component = intent.getParcelableExtra("_VA_|_component_");
-        int userId = intent.getIntExtra("_VA_|_user_id_", VUserHandle.USER_NULL);
+    fun handleStaticBroadcast(
+        appId: Int, info: ActivityInfo, intent: Intent,
+        result: PendingResultData?
+    ): Boolean {
+        val realIntent = intent.getParcelableExtra<Intent?>("_VA_|_intent_")
+        val component = intent.getParcelableExtra<ComponentName?>("_VA_|_component_")
+        val userId = intent.getIntExtra("_VA_|_user_id_", VUserHandle.USER_NULL)
         if (realIntent == null) {
-            return false;
+            return false
         }
         if (userId < 0) {
-            VLog.w(TAG, "Sent a broadcast without userId " + realIntent);
-            return false;
+            VLog.w(TAG, "Sent a broadcast without userId $realIntent")
+            return false
         }
-        int vuid = VUserHandle.getUid(userId, appId);
-        return handleUserBroadcast(vuid, info, component, realIntent, result);
+        val vuid = VUserHandle.getUid(userId, appId)
+        return handleUserBroadcast(vuid, info, component, realIntent, result)
     }
 
-    private boolean handleUserBroadcast(int vuid, ActivityInfo info, ComponentName component, Intent realIntent, PendingResultData result) {
-        if (component != null && !ComponentUtils.toComponentName(info).equals(component)) {
+    private fun handleUserBroadcast(
+        vuid: Int,
+        info: ActivityInfo,
+        component: ComponentName?,
+        realIntent: Intent,
+        result: PendingResultData?
+    ): Boolean {
+        if (component != null && ComponentUtils.toComponentName(info) != component) {
             // Verify the component.
-            return false;
+            return false
         }
-        String originAction = SpecialComponentList.unprotectAction(realIntent.getAction());
+        val originAction = SpecialComponentList.unprotectAction(realIntent.action)
         if (originAction != null) {
             // restore to origin action.
-            realIntent.setAction(originAction);
+            realIntent.setAction(originAction)
         }
 
-        VLoggingClient.get().log(new LogMessage.BroadCastReceived(realIntent.getAction(), info.packageName));
+        VLoggingClient.get().log(BroadCastReceived(realIntent.action!!, info.packageName))
 
-        handleStaticBroadcastAsUser(vuid, info, realIntent, result);
-        return true;
+        handleStaticBroadcastAsUser(vuid, info, realIntent, result)
+        return true
     }
 
-    private void handleStaticBroadcastAsUser(int vuid, ActivityInfo info, Intent intent,
-                                             PendingResultData result) {
-        synchronized (this) {
-            ProcessRecord r = findProcessLocked(info.processName, vuid);
-            if ((BROADCAST_NOT_STARTED_PKG || isStartProcessForBroadcast(info.processName, info.packageName))
-                    && r == null) {
-                r = startProcessIfNeedLocked(info.processName, getUserId(vuid), info.packageName);
+    private fun handleStaticBroadcastAsUser(
+        vuid: Int, info: ActivityInfo, intent: Intent?,
+        result: PendingResultData?
+    ) {
+        synchronized(this) {
+            var r = findProcessLocked(info.processName, vuid)
+            if (isStartProcessForBroadcast(
+                    info.processName,
+                    info.packageName
+                ) && r == null
+            ) {
+                r = startProcessIfNeedLocked(
+                    info.processName,
+                    VUserHandle.getUserId(vuid),
+                    info.packageName
+                )
             }
-            if (r != null && r.appThread != null) {
-                performScheduleReceiver(r.client, vuid, info, intent,
-                        result);
+            if (r?.appThread != null) {
+                performScheduleReceiver(
+                    r.client, vuid, info, intent,
+                    result
+                )
             }
         }
     }
 
-    private static boolean isStartProcessForBroadcast(String processName, String packageName) {
-        return Constants.PRIVILEGE_APP.contains(packageName);
-    }
-
-    private void performScheduleReceiver(IVClient client, int vuid, ActivityInfo info, Intent intent,
-                                         PendingResultData result) {
-
-        ComponentName componentName = ComponentUtils.toComponentName(info);
-        BroadcastSystem.get().broadcastSent(vuid, info, result);
+    private fun performScheduleReceiver(
+        client: IVClient, vuid: Int, info: ActivityInfo, intent: Intent?,
+        result: PendingResultData?
+    ) {
+        val componentName = ComponentUtils.toComponentName(info)
+        BroadcastSystem.get().broadcastSent(vuid, info, result)
         try {
-            client.scheduleReceiver(info.processName, componentName, intent, result);
-        } catch (Throwable e) {
-            if (result != null) {
-                result.finish();
-            }
+            client.scheduleReceiver(info.processName, componentName, intent, result)
+        } catch (_: Throwable) {
+            result?.finish()
         }
     }
 
-    @Override
-    public void broadcastFinish(PendingResultData res) {
-        BroadcastSystem.get().broadcastFinish(res);
+    override fun broadcastFinish(res: PendingResultData) {
+        BroadcastSystem.get().broadcastFinish(res)
     }
 
-    @Override
-    public void notifyBadgerChange(BadgerInfo info) throws RemoteException {
-        Intent intent = new Intent(VASettings.ACTION_BADGER_CHANGE);
-        intent.putExtra("userId", info.userId);
-        intent.putExtra("packageName", info.packageName);
-        intent.putExtra("badgerCount", info.badgerCount);
-        VirtualCore.get().getContext().sendBroadcast(intent);
+    @Throws(RemoteException::class)
+    override fun notifyBadgerChange(info: BadgerInfo) {
+        val intent = Intent(VASettings.ACTION_BADGER_CHANGE)
+        intent.putExtra("userId", info.userId)
+        intent.putExtra("packageName", info.packageName)
+        intent.putExtra("badgerCount", info.badgerCount)
+        VirtualCore.get().context.sendBroadcast(intent)
     }
 
-    @Override
-    public void removeContentProvider(IBinder connection, boolean stable) throws RemoteException {
+    @Throws(RemoteException::class)
+    override fun removeContentProvider(connection: IBinder?, stable: Boolean) {
     }
 
-    @Override
-    public int broadcastIntentWithFeature(IApplicationThread caller, String callingFeatureId, Intent intent, String resolvedType, IIntentReceiver resultTo, int resultCode, String resultData, Bundle map, String[] requiredPermissions, String[] excludePermissions, String[] excludePackages, int appOp, Bundle options, boolean serialized, boolean sticky, int userId) throws RemoteException {
+    @Throws(RemoteException::class)
+    override fun broadcastIntentWithFeature(
+        caller: IApplicationThread?,
+        callingFeatureId: String?,
+        intent: Intent,
+        resolvedType: String?,
+        resultTo: IIntentReceiver?,
+        resultCode: Int,
+        resultData: String?,
+        map: Bundle?,
+        requiredPermissions: Array<String?>?,
+        excludePermissions: Array<String?>?,
+        excludePackages: Array<String?>?,
+        appOp: Int,
+        options: Bundle?,
+        serialized: Boolean,
+        sticky: Boolean,
+        userId: Int
+    ): Int {
         // Android 11+ uses broadcastIntentWithFeature internally instead of sendBroadcast
-        SpecialComponentList.protectIntent(intent);
-        Context context = VirtualCore.get().getContext();
-        intent.putExtra("_VA_|_user_id_", userId);
-        context.sendBroadcast(intent);
-        return 0;
+        SpecialComponentList.protectIntent(intent)
+        val context = VirtualCore.get().context
+        intent.putExtra("_VA_|_user_id_", userId)
+        context.sendBroadcast(intent)
+        return 0
+    }
+
+    companion object {
+        private const val BROADCAST_NOT_STARTED_PKG = false
+
+        private val sService = AtomicReference<VActivityManagerService>()
+        private val TAG: String = VActivityManagerService::class.java.getSimpleName()
+        @JvmStatic
+        fun get(): VActivityManagerService {
+            return sService.get()
+        }
+
+        @JvmStatic
+        fun systemReady(context: Context) {
+            VActivityManagerService().onCreate(context)
+        }
+
+        private fun resolveServiceInfo(service: Intent?, userId: Int): ServiceInfo? {
+            if (service != null) {
+                val serviceInfo = VirtualCore.get().resolveServiceInfo(service, userId)
+                if (serviceInfo != null) {
+                    return serviceInfo
+                }
+            }
+            return null
+        }
+
+        private fun isStartProcessForBroadcast(
+            processName: String?,
+            packageName: String?
+        ): Boolean {
+            return Constants.PRIVILEGE_APP.contains(packageName)
+        }
     }
 }

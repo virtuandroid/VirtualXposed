@@ -1,447 +1,383 @@
-package com.lody.virtual.server.pm;
+package com.lody.virtual.server.pm
 
-import android.app.Activity;
-import android.app.IStopUserCallback;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.os.Binder;
-import android.util.SparseArray;
-import android.util.Xml;
-
-import com.lody.virtual.R;
-import com.lody.virtual.client.core.VirtualCore;
-import com.lody.virtual.client.env.Constants;
-import com.lody.virtual.helper.compat.ActivityManagerCompat;
-import com.lody.virtual.helper.utils.ArrayUtils;
-import com.lody.virtual.helper.utils.AtomicFile;
-import com.lody.virtual.helper.utils.FastXmlSerializer;
-import com.lody.virtual.helper.utils.VLog;
-import com.lody.virtual.os.VBinder;
-import com.lody.virtual.os.VEnvironment;
-import com.lody.virtual.os.VUserHandle;
-import com.lody.virtual.os.VUserInfo;
-import com.lody.virtual.os.VUserManager;
-import com.lody.virtual.server.am.VActivityManagerService;
-import com.lody.virtual.server.IUserManager;
-
-import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserException;
-import org.xmlpull.v1.XmlSerializer;
-
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileDescriptor;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-
+import android.app.Activity
+import android.app.IStopUserCallback
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.SparseArray
+import android.util.Xml
+import com.lody.virtual.R
+import com.lody.virtual.client.core.VirtualCore
+import com.lody.virtual.client.env.Constants
+import com.lody.virtual.helper.compat.ActivityManagerCompat
+import com.lody.virtual.helper.utils.ArrayUtils
+import com.lody.virtual.helper.utils.AtomicFile
+import com.lody.virtual.helper.utils.FastXmlSerializer
+import com.lody.virtual.os.VBinder
+import com.lody.virtual.os.VEnvironment
+import com.lody.virtual.os.VUserHandle
+import com.lody.virtual.os.VUserInfo
+import com.lody.virtual.os.VUserManager
+import com.lody.virtual.server.IUserManager
+import com.lody.virtual.server.am.VActivityManagerService
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserException
+import org.xmlpull.v1.XmlSerializer
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileDescriptor
+import java.io.FileInputStream
+import java.io.FileNotFoundException
+import java.io.FileOutputStream
+import java.io.IOException
+import androidx.core.util.size
+import timber.log.Timber
 
 /**
  * @author Lody
  */
-public class VUserManagerService extends IUserManager.Stub {
+class VUserManagerService private constructor(
+    private val mContext: Context, private val mPm: VPackageManagerService,
+    private val mInstallLock: Any, private val mPackagesLock: Any,
+    dataDir: File?, baseUserPath: File?
+) : IUserManager.Stub() {
+    private val mUsersDir: File
+    private val mUserListFile: File
+    private val mBaseUserPath: File?
+    private val mUsers = SparseArray<VUserInfo>()
+    private val mRemovingUserIds = HashSet<Int?>()
+    lateinit var userIdsLPr: IntArray
+        private set
+    private var mGuestEnabled = false
+    private var mNextSerialNumber = 0
 
-    private static final String LOG_TAG = "VUserManagerService";
-
-    private static final boolean DBG = false;
-
-    private static final String TAG_NAME = "name";
-    private static final String ATTR_FLAGS = "flags";
-    private static final String ATTR_ICON_PATH = "icon";
-    private static final String ATTR_ID = "id";
-    private static final String ATTR_CREATION_TIME = "created";
-    private static final String ATTR_LAST_LOGGED_IN_TIME = "lastLoggedIn";
-    private static final String ATTR_SERIAL_NO = "serialNumber";
-    private static final String ATTR_NEXT_SERIAL_NO = "nextSerialNumber";
-    private static final String ATTR_PARTIAL = "partial";
-    private static final String ATTR_USER_VERSION = "version";
-    private static final String TAG_USERS = "users";
-    private static final String TAG_USER = "user";
-
-    private static final String USER_INFO_DIR = "system" + File.separator + "users";
-    private static final String USER_LIST_FILENAME = "userlist.xml";
-    private static final String USER_PHOTO_FILENAME = "photo.png";
-
-    private static final int MIN_USER_ID = 1;
-
-    private static final int USER_VERSION = 1;
-
-    private static final long EPOCH_PLUS_30_YEARS = 30L * 365 * 24 * 60 * 60 * 1000L; // ms
-    private static VUserManagerService sInstance;
-    private final Context mContext;
-    private final VPackageManagerService mPm;
-    private final Object mInstallLock;
-    private final Object mPackagesLock;
-    private final File mUsersDir;
-    private final File mUserListFile;
-    private final File mBaseUserPath;
-    private SparseArray<VUserInfo> mUsers = new SparseArray<VUserInfo>();
-    private HashSet<Integer> mRemovingUserIds = new HashSet<Integer>();
-    private int[] mUserIds;
-    private boolean mGuestEnabled;
-    private int mNextSerialNumber;
-    // This resets on a reboot. Otherwise it keeps incrementing so that user ids are
+    // This resets on a reboot. Otherwise, it keeps incrementing so that user ids are
     // not reused in quick succession
-    private int mNextUserId = MIN_USER_ID;
-    private int mUserVersion = 0;
+    private var mNextUserId: Int = MIN_USER_ID
+    private var mUserVersion = 0
 
     /**
      * Called by package manager to create the service.  This is closely
      * associated with the package manager, and the given lock is the
      * package manager's own lock.
      */
-    VUserManagerService(Context context, VPackageManagerService pm,
-                        Object installLock, Object packagesLock) {
-        this(context, pm, installLock, packagesLock,
-                VEnvironment.getDataDirectory(),
-                new File(VEnvironment.getDataDirectory(), "user"));
-    }
+    internal constructor(
+        context: Context, pm: VPackageManagerService,
+        installLock: Any, packagesLock: Any
+    ) : this(
+        context, pm, installLock, packagesLock,
+        VEnvironment.getDataDirectory(),
+        File(VEnvironment.getDataDirectory(), "user")
+    )
 
-    /**
-     * Available for testing purposes.
-     */
-    private VUserManagerService(Context context, VPackageManagerService pm,
-                                Object installLock, Object packagesLock,
-                                File dataDir, File baseUserPath) {
-        mContext = context;
-        mPm = pm;
-        mInstallLock = installLock;
-        mPackagesLock = packagesLock;
-        synchronized (mInstallLock) {
-            synchronized (mPackagesLock) {
-                mUsersDir = new File(dataDir, USER_INFO_DIR);
-                mUsersDir.mkdirs();
+    init {
+        synchronized(mInstallLock) {
+            synchronized(mPackagesLock) {
+                mUsersDir = File(dataDir, USER_INFO_DIR)
+                mUsersDir.mkdirs()
                 // Make zeroth user directory, for services to migrate their files to that location
-                File userZeroDir = new File(mUsersDir, "0");
-                userZeroDir.mkdirs();
-                mBaseUserPath = baseUserPath;
-//                FileUtils.setPermissions(mUsersDir.toString(),
+                val userZeroDir = File(mUsersDir, "0")
+                userZeroDir.mkdirs()
+                mBaseUserPath = baseUserPath
+                //                FileUtils.setPermissions(mUsersDir.toString(),
 //                        FileUtils.S_IRWXU|FileUtils.S_IRWXG
 //                        |FileUtils.S_IROTH|FileUtils.S_IXOTH,
 //                        -1, -1);
-                mUserListFile = new File(mUsersDir, USER_LIST_FILENAME);
-                readUserListLocked();
+                mUserListFile = File(mUsersDir, USER_LIST_FILENAME)
+                readUserListLocked()
                 // Prune out any partially created/partially removed users.
-                ArrayList<VUserInfo> partials = new ArrayList<VUserInfo>();
-                for (int i = 0; i < mUsers.size(); i++) {
-                    VUserInfo ui = mUsers.valueAt(i);
+                val partials = ArrayList<VUserInfo>()
+                for (i in 0..<mUsers.size) {
+                    val ui = mUsers.valueAt(i)
                     if (ui.partial && i != 0) {
-                        partials.add(ui);
+                        partials.add(ui)
                     }
                 }
-                for (int i = 0; i < partials.size(); i++) {
-                    VUserInfo ui = partials.get(i);
-                    VLog.w(LOG_TAG, "Removing partially created user #" + i
-                            + " (name=" + ui.name + ")");
-                    removeUserStateLocked(ui.id);
+                for (i in partials.indices) {
+                    val ui = partials[i]
+                    Timber.w(
+                        ("Removing partially created user #" + i
+                                + " (name=" + ui.name + ")")
+                    )
+                    removeUserStateLocked(ui.id)
                 }
-                sInstance = this;
+                sInstance = this
             }
         }
     }
 
-    public static VUserManagerService get() {
-        synchronized (VUserManagerService.class) {
-            return sInstance;
-        }
-    }
-
-    /**
-     * Enforces that only the system UID or root's UID or apps that have the
-     * {android.Manifest.permission.MANAGE_USERS MANAGE_USERS}
-     * permission can make certain calls to the VUserManager.
-     *
-     * @param message used as message if SecurityException is thrown
-     * @throws SecurityException if the caller is not system or root
-     */
-    private static void checkManageUsersPermission(String message) {
-        final int uid = VBinder.getCallingUid();
-        if (uid != VirtualCore.get().myUid()) {
-            throw new SecurityException("You need MANAGE_USERS permission to: " + message);
-        }
-    }
-
-    @Override
-    public List<VUserInfo> getUsers(boolean excludeDying) {
+    override fun getUsers(excludeDying: Boolean): MutableList<VUserInfo?> {
         //checkManageUsersPermission("query users");
-        synchronized (mPackagesLock) {
-            ArrayList<VUserInfo> users = new ArrayList<VUserInfo>(mUsers.size());
-            for (int i = 0; i < mUsers.size(); i++) {
-                VUserInfo ui = mUsers.valueAt(i);
+        synchronized(mPackagesLock) {
+            val users = ArrayList<VUserInfo?>(mUsers.size)
+            for (i in 0..<mUsers.size) {
+                val ui = mUsers.valueAt(i)
                 if (ui.partial) {
-                    continue;
+                    continue
                 }
                 if (!excludeDying || !mRemovingUserIds.contains(ui.id)) {
-                    users.add(ui);
+                    users.add(ui)
                 }
             }
-            return users;
+            return users
         }
     }
 
-    @Override
-    public VUserInfo getUserInfo(int userId) {
+    override fun getUserInfo(userId: Int): VUserInfo? {
         //checkManageUsersPermission("query user");
-        synchronized (mPackagesLock) {
-            return getUserInfoLocked(userId);
+        synchronized(mPackagesLock) {
+            return getUserInfoLocked(userId)
         }
     }
 
     /*
      * Should be locked on mUsers before calling this.
      */
-    private VUserInfo getUserInfoLocked(int userId) {
-        VUserInfo ui = mUsers.get(userId);
+    private fun getUserInfoLocked(userId: Int): VUserInfo? {
+        val ui = mUsers.get(userId)
         // If it is partial and not in the process of being removed, return as unknown user.
         if (ui != null && ui.partial && !mRemovingUserIds.contains(userId)) {
-            VLog.w(LOG_TAG, "getUserInfo: unknown user #" + userId);
-            return null;
+            Timber.w("getUserInfo: unknown user #$userId")
+            return null
         }
-        return ui;
+        return ui
     }
 
-    public boolean exists(int userId) {
-        synchronized (mPackagesLock) {
-            return ArrayUtils.contains(mUserIds, userId);
+    fun exists(userId: Int): Boolean {
+        synchronized(mPackagesLock) {
+            return ArrayUtils.contains(
+                this.userIdsLPr, userId
+            )
         }
     }
 
-    @Override
-    public void setUserName(int userId, String name) {
-        checkManageUsersPermission("rename users");
-        boolean changed = false;
-        synchronized (mPackagesLock) {
-            VUserInfo info = mUsers.get(userId);
+    override fun setUserName(userId: Int, name: String?) {
+        checkManageUsersPermission("rename users")
+        var changed = false
+        synchronized(mPackagesLock) {
+            val info = mUsers.get(userId)
             if (info == null || info.partial) {
-                VLog.w(LOG_TAG, "setUserName: unknown user #" + userId);
-                return;
+                Timber.w("setUserName: unknown user #$userId")
+                return
             }
-            if (name != null && !name.equals(info.name)) {
-                info.name = name;
-                writeUserLocked(info);
-                changed = true;
+            if (name != null && name != info.name) {
+                info.name = name
+                writeUserLocked(info)
+                changed = true
             }
         }
         if (changed) {
-            sendUserInfoChangedBroadcast(userId);
+            sendUserInfoChangedBroadcast(userId)
         }
     }
 
-    @Override
-    public void setUserIcon(int userId, Bitmap bitmap) {
-        checkManageUsersPermission("update users");
-        synchronized (mPackagesLock) {
-            VUserInfo info = mUsers.get(userId);
+    override fun setUserIcon(userId: Int, bitmap: Bitmap) {
+        checkManageUsersPermission("update users")
+        synchronized(mPackagesLock) {
+            val info = mUsers.get(userId)
             if (info == null || info.partial) {
-                VLog.w(LOG_TAG, "setUserIcon: unknown user #" + userId);
-                return;
+                Timber.w( "setUserIcon: unknown user #$userId")
+                return
             }
-            writeBitmapLocked(info, bitmap);
-            writeUserLocked(info);
+            writeBitmapLocked(info, bitmap)
+            writeUserLocked(info)
         }
-        sendUserInfoChangedBroadcast(userId);
+        sendUserInfoChangedBroadcast(userId)
     }
 
-    private void sendUserInfoChangedBroadcast(int userId) {
-        Intent changedIntent = new Intent(Constants.ACTION_USER_INFO_CHANGED);
-        changedIntent.putExtra(Constants.EXTRA_USER_HANDLE, userId);
-        changedIntent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
-        VActivityManagerService.get().sendBroadcastAsUser(changedIntent, new VUserHandle(userId));
+    private fun sendUserInfoChangedBroadcast(userId: Int) {
+        val changedIntent = Intent(Constants.ACTION_USER_INFO_CHANGED)
+        changedIntent.putExtra(Constants.EXTRA_USER_HANDLE, userId)
+        changedIntent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
+        VActivityManagerService.get().sendBroadcastAsUser(changedIntent, VUserHandle(userId))
     }
 
-    @Override
-    public Bitmap getUserIcon(int userId) {
+    override fun getUserIcon(userId: Int): Bitmap? {
         //checkManageUsersPermission("read users");
-        synchronized (mPackagesLock) {
-            VUserInfo info = mUsers.get(userId);
+        synchronized(mPackagesLock) {
+            val info = mUsers.get(userId)
             if (info == null || info.partial) {
-                VLog.w(LOG_TAG, "getUserIcon: unknown user #" + userId);
-                return null;
+                Timber.w("getUserIcon: unknown user #$userId")
+                return null
             }
             if (info.iconPath == null) {
-                return null;
+                return null
             }
-            return BitmapFactory.decodeFile(info.iconPath);
+            return BitmapFactory.decodeFile(info.iconPath)
         }
     }
 
-    @Override
-    public boolean isGuestEnabled() {
-        synchronized (mPackagesLock) {
-            return mGuestEnabled;
+    override fun isGuestEnabled(): Boolean {
+        synchronized(mPackagesLock) {
+            return mGuestEnabled
         }
     }
 
-    @Override
-    public void setGuestEnabled(boolean enable) {
-        checkManageUsersPermission("enable guest users");
-        synchronized (mPackagesLock) {
+    override fun setGuestEnabled(enable: Boolean) {
+        checkManageUsersPermission("enable guest users")
+        synchronized(mPackagesLock) {
             if (mGuestEnabled != enable) {
-                mGuestEnabled = enable;
+                mGuestEnabled = enable
                 // Erase any guest user that currently exists
-                for (int i = 0; i < mUsers.size(); i++) {
-                    VUserInfo user = mUsers.valueAt(i);
-                    if (!user.partial && user.isGuest()) {
+                for (i in 0..<mUsers.size) {
+                    val user = mUsers.valueAt(i)
+                    if (!user.partial && user.isGuest) {
                         if (!enable) {
-                            removeUser(user.id);
+                            removeUser(user.id)
                         }
-                        return;
+                        return
                     }
                 }
                 // No guest was found
                 if (enable) {
-                    createUser("Guest", VUserInfo.FLAG_GUEST);
+                    createUser("Guest", VUserInfo.FLAG_GUEST)
                 }
             }
         }
     }
 
-    @Override
-    public void wipeUser(int userHandle) {
-        checkManageUsersPermission("wipe user");
+    override fun wipeUser(userHandle: Int) {
+        checkManageUsersPermission("wipe user")
         // TODO:
     }
 
-    public void makeInitialized(int userId) {
-        checkManageUsersPermission("makeInitialized");
-        synchronized (mPackagesLock) {
-            VUserInfo info = mUsers.get(userId);
+    fun makeInitialized(userId: Int) {
+        checkManageUsersPermission("makeInitialized")
+        synchronized(mPackagesLock) {
+            val info = mUsers.get(userId)
             if (info == null || info.partial) {
-                VLog.w(LOG_TAG, "makeInitialized: unknown user #" + userId);
+                Timber.w("makeInitialized: unknown user #$userId")
             }
-            if ((info.flags& VUserInfo.FLAG_INITIALIZED) == 0) {
-                info.flags |= VUserInfo.FLAG_INITIALIZED;
-                writeUserLocked(info);
+            if ((info!!.flags and VUserInfo.FLAG_INITIALIZED) == 0) {
+                info.flags = info.flags or VUserInfo.FLAG_INITIALIZED
+                writeUserLocked(info)
             }
         }
     }
 
-    /**
-     * Check if we've hit the limit of how many users can be created.
-     */
-    private boolean isUserLimitReachedLocked() {
-        int nUsers = mUsers.size();
-        return nUsers >= VUserManager.getMaxSupportedUsers();
-    }
+    private val isUserLimitReachedLocked: Boolean
+        /**
+         * Check if we've hit the limit of how many users can be created.
+         */
+        get() {
+            val nUsers = mUsers.size
+            return nUsers >= VUserManager.getMaxSupportedUsers()
+        }
 
-    private void writeBitmapLocked(VUserInfo info, Bitmap bitmap) {
+    private fun writeBitmapLocked(info: VUserInfo, bitmap: Bitmap) {
         try {
-            File dir = new File(mUsersDir, Integer.toString(info.id));
-            File file = new File(dir, USER_PHOTO_FILENAME);
+            val dir = File(mUsersDir, info.id.toString())
+            val file = File(dir, USER_PHOTO_FILENAME)
             if (!dir.exists()) {
-                dir.mkdir();
-//                FileUtils.setPermissions(
+                dir.mkdir()
+                //                FileUtils.setPermissions(
 //                        dir.getPath(),
 //                        FileUtils.S_IRWXU|FileUtils.S_IRWXG|FileUtils.S_IXOTH,
 //                        -1, -1);
             }
-            FileOutputStream os;
-            if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, os = new FileOutputStream(file))) {
-                info.iconPath = file.getAbsolutePath();
+            val os: FileOutputStream?
+            if (bitmap.compress(
+                    Bitmap.CompressFormat.PNG,
+                    100,
+                    FileOutputStream(file).also { os = it })
+            ) {
+                info.iconPath = file.absolutePath
             }
             try {
-                os.close();
-            } catch (IOException ioe) {
+                os!!.close()
+            } catch (_: IOException) {
                 // What the ... !
             }
-        } catch (FileNotFoundException e) {
-            VLog.w(LOG_TAG, "Error setting photo for user ", e);
+        } catch (e: FileNotFoundException) {
+            Timber.w(e, "Error setting photo for user ")
         }
     }
 
-    /**
-     * Returns an array of user ids. This array is cached here for quick access, so do not modify or
-     * cache it elsewhere.
-     * @return the array of user ids.
-     */
-    public int[] getUserIds() {
-        synchronized (mPackagesLock) {
-            return mUserIds;
+    val userIds: IntArray
+        /**
+         * Returns an array of user ids. This array is cached here for quick access, so do not modify or
+         * cache it elsewhere.
+         * @return the array of user ids.
+         */
+        get() {
+            synchronized(mPackagesLock) {
+                return this.userIdsLPr
+            }
+        }
+
+    private fun readUserList() {
+        synchronized(mPackagesLock) {
+            readUserListLocked()
         }
     }
 
-    int[] getUserIdsLPr() {
-        return mUserIds;
-    }
-
-    private void readUserList() {
-        synchronized (mPackagesLock) {
-            readUserListLocked();
-        }
-    }
-
-    private void readUserListLocked() {
-        mGuestEnabled = false;
+    private fun readUserListLocked() {
+        mGuestEnabled = false
         if (!mUserListFile.exists()) {
-            fallbackToSingleUserLocked();
-            return;
+            fallbackToSingleUserLocked()
+            return
         }
-        FileInputStream fis = null;
-        AtomicFile userListFile = new AtomicFile(mUserListFile);
+        var fis: FileInputStream? = null
+        val userListFile = AtomicFile(mUserListFile)
         try {
-            fis = userListFile.openRead();
-            XmlPullParser parser = Xml.newPullParser();
-            parser.setInput(fis, null);
-            int type;
-            while ((type = parser.next()) != XmlPullParser.START_TAG
-                    && type != XmlPullParser.END_DOCUMENT) {
-                ;
+            fis = userListFile.openRead()
+            val parser = Xml.newPullParser()
+            parser.setInput(fis, null)
+            var type: Int
+            while ((parser.next().also { type = it }) != XmlPullParser.START_TAG
+                && type != XmlPullParser.END_DOCUMENT
+            ) {
             }
 
             if (type != XmlPullParser.START_TAG) {
-                VLog.e(LOG_TAG, "Unable to read user list");
-                fallbackToSingleUserLocked();
-                return;
+                Timber.e( "Unable to read user list")
+                fallbackToSingleUserLocked()
+                return
             }
 
-            mNextSerialNumber = -1;
-            if (parser.getName().equals(TAG_USERS)) {
-                String lastSerialNumber = parser.getAttributeValue(null, ATTR_NEXT_SERIAL_NO);
+            mNextSerialNumber = -1
+            if (parser.name == TAG_USERS) {
+                val lastSerialNumber = parser.getAttributeValue(null, ATTR_NEXT_SERIAL_NO)
                 if (lastSerialNumber != null) {
-                    mNextSerialNumber = Integer.parseInt(lastSerialNumber);
+                    mNextSerialNumber = lastSerialNumber.toInt()
                 }
-                String versionNumber = parser.getAttributeValue(null, ATTR_USER_VERSION);
+                val versionNumber = parser.getAttributeValue(null, ATTR_USER_VERSION)
                 if (versionNumber != null) {
-                    mUserVersion = Integer.parseInt(versionNumber);
+                    mUserVersion = versionNumber.toInt()
                 }
             }
 
-            while ((type = parser.next()) != XmlPullParser.END_DOCUMENT) {
-                if (type == XmlPullParser.START_TAG && parser.getName().equals(TAG_USER)) {
-                    String id = parser.getAttributeValue(null, ATTR_ID);
-                    VUserInfo user = readUser(Integer.parseInt(id));
+            while ((parser.next().also { type = it }) != XmlPullParser.END_DOCUMENT) {
+                if (type == XmlPullParser.START_TAG && parser.name == TAG_USER) {
+                    val id = parser.getAttributeValue(null, ATTR_ID)
+                    val user = readUser(id.toInt())
 
                     if (user != null) {
-                        mUsers.put(user.id, user);
-                        if (user.isGuest()) {
-                            mGuestEnabled = true;
+                        mUsers.put(user.id, user)
+                        if (user.isGuest) {
+                            mGuestEnabled = true
                         }
                         if (mNextSerialNumber < 0 || mNextSerialNumber <= user.id) {
-                            mNextSerialNumber = user.id + 1;
+                            mNextSerialNumber = user.id + 1
                         }
                     }
                 }
             }
-            updateUserIdsLocked();
-            upgradeIfNecessary();
-        } catch (IOException ioe) {
-            fallbackToSingleUserLocked();
-        } catch (XmlPullParserException pe) {
-            fallbackToSingleUserLocked();
+            updateUserIdsLocked()
+            upgradeIfNecessary()
+        } catch (_: IOException) {
+            fallbackToSingleUserLocked()
+        } catch (_: XmlPullParserException) {
+            fallbackToSingleUserLocked()
         } finally {
             if (fis != null) {
                 try {
-                    fis.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
+                    fis.close()
+                } catch (e: IOException) {
+                    e.printStackTrace()
                 }
             }
         }
@@ -451,38 +387,42 @@ public class VUserManagerService extends IUserManager.Stub {
      * This fixes an incorrect initialization of user name for the owner.
      * TODO: Remove in the next release.
      */
-    private void upgradeIfNecessary() {
-        int userVersion = mUserVersion;
+    private fun upgradeIfNecessary() {
+        var userVersion = mUserVersion
         if (userVersion < 1) {
             // Assign a proper name for the owner, if not initialized correctly before
-            VUserInfo user = mUsers.get(VUserHandle.USER_OWNER);
-            if ("Primary".equals(user.name)) {
-                user.name = "Admin";
-                writeUserLocked(user);
+            val user = mUsers.get(VUserHandle.USER_OWNER)
+            if ("Primary" == user.name) {
+                user.name = "Admin"
+                writeUserLocked(user)
             }
-            userVersion = 1;
+            userVersion = 1
         }
 
         if (userVersion < USER_VERSION) {
-            VLog.w(LOG_TAG, "User version " + mUserVersion + " didn't upgrade as expected to "
-                    + USER_VERSION);
+            Timber.w(
+                ("User version " + mUserVersion + " didn't upgrade as expected to "
+                        + USER_VERSION)
+            )
         } else {
-            mUserVersion = userVersion;
-            writeUserListLocked();
+            mUserVersion = userVersion
+            writeUserListLocked()
         }
     }
 
-    private void fallbackToSingleUserLocked() {
+    private fun fallbackToSingleUserLocked() {
         // Create the primary user
-        VUserInfo primary = new VUserInfo(0,
-                mContext.getResources().getString(R.string.owner_name), null,
-                VUserInfo.FLAG_ADMIN | VUserInfo.FLAG_PRIMARY | VUserInfo.FLAG_INITIALIZED);
-        mUsers.put(0, primary);
-        mNextSerialNumber = MIN_USER_ID;
-        updateUserIdsLocked();
+        val primary = VUserInfo(
+            0,
+            mContext.resources.getString(R.string.owner_name), null,
+            VUserInfo.FLAG_ADMIN or VUserInfo.FLAG_PRIMARY or VUserInfo.FLAG_INITIALIZED
+        )
+        mUsers.put(0, primary)
+        mNextSerialNumber = MIN_USER_ID
+        updateUserIdsLocked()
 
-        writeUserListLocked();
-        writeUserLocked(primary);
+        writeUserListLocked()
+        writeUserLocked(primary)
     }
 
     /*
@@ -492,44 +432,46 @@ public class VUserManagerService extends IUserManager.Stub {
      *   <name>Primary</name>
      * </user>
      */
-    private void writeUserLocked(VUserInfo userInfo) {
-        FileOutputStream fos = null;
-        AtomicFile userFile = new AtomicFile(new File(mUsersDir, userInfo.id + ".xml"));
+    private fun writeUserLocked(userInfo: VUserInfo) {
+        var fos: FileOutputStream? = null
+        val userFile = AtomicFile(File(mUsersDir, userInfo.id.toString() + ".xml"))
         try {
-            fos = userFile.startWrite();
-            final BufferedOutputStream bos = new BufferedOutputStream(fos);
+            fos = userFile.startWrite()
+            val bos = BufferedOutputStream(fos)
 
             // XmlSerializer serializer = XmlUtils.serializerInstance();
-            final XmlSerializer serializer = new FastXmlSerializer();
-            serializer.setOutput(bos, "utf-8");
-            serializer.startDocument(null, true);
-            serializer.setFeature("http://xmlpull.org/v1/doc/features.html#indent-output", true);
+            val serializer: XmlSerializer = FastXmlSerializer()
+            serializer.setOutput(bos, "utf-8")
+            serializer.startDocument(null, true)
+            serializer.setFeature("http://xmlpull.org/v1/doc/features.html#indent-output", true)
 
-            serializer.startTag(null, TAG_USER);
-            serializer.attribute(null, ATTR_ID, Integer.toString(userInfo.id));
-            serializer.attribute(null, ATTR_SERIAL_NO, Integer.toString(userInfo.serialNumber));
-            serializer.attribute(null, ATTR_FLAGS, Integer.toString(userInfo.flags));
-            serializer.attribute(null, ATTR_CREATION_TIME, Long.toString(userInfo.creationTime));
-            serializer.attribute(null, ATTR_LAST_LOGGED_IN_TIME,
-                    Long.toString(userInfo.lastLoggedInTime));
+            serializer.startTag(null, TAG_USER)
+            serializer.attribute(null, ATTR_ID, userInfo.id.toString())
+            serializer.attribute(null, ATTR_SERIAL_NO, userInfo.serialNumber.toString())
+            serializer.attribute(null, ATTR_FLAGS, userInfo.flags.toString())
+            serializer.attribute(null, ATTR_CREATION_TIME, userInfo.creationTime.toString())
+            serializer.attribute(
+                null, ATTR_LAST_LOGGED_IN_TIME,
+                userInfo.lastLoggedInTime.toString()
+            )
             if (userInfo.iconPath != null) {
-                serializer.attribute(null,  ATTR_ICON_PATH, userInfo.iconPath);
+                serializer.attribute(null, ATTR_ICON_PATH, userInfo.iconPath)
             }
             if (userInfo.partial) {
-                serializer.attribute(null, ATTR_PARTIAL, "true");
+                serializer.attribute(null, ATTR_PARTIAL, "true")
             }
 
-            serializer.startTag(null, TAG_NAME);
-            serializer.text(userInfo.name);
-            serializer.endTag(null, TAG_NAME);
+            serializer.startTag(null, TAG_NAME)
+            serializer.text(userInfo.name)
+            serializer.endTag(null, TAG_NAME)
 
-            serializer.endTag(null, TAG_USER);
+            serializer.endTag(null, TAG_USER)
 
-            serializer.endDocument();
-            userFile.finishWrite(fos);
-        } catch (Exception ioe) {
-            VLog.e(LOG_TAG, "Error writing user info " + userInfo.id + "\n" + ioe);
-            userFile.failWrite(fos);
+            serializer.endDocument()
+            userFile.finishWrite(fos)
+        } catch (ioe: Exception) {
+            Timber.e(ioe,"Error writing user info ${userInfo.id}")
+            userFile.failWrite(fos)
         }
     }
 
@@ -541,169 +483,168 @@ public class VUserManagerService extends IUserManager.Stub {
      *   <user id="2"></user>
      * </users>
      */
-    private void writeUserListLocked() {
-        FileOutputStream fos = null;
-        AtomicFile userListFile = new AtomicFile(mUserListFile);
+    private fun writeUserListLocked() {
+        var fos: FileOutputStream? = null
+        val userListFile = AtomicFile(mUserListFile)
         try {
-            fos = userListFile.startWrite();
-            final BufferedOutputStream bos = new BufferedOutputStream(fos);
+            fos = userListFile.startWrite()
+            val bos = BufferedOutputStream(fos)
 
             // XmlSerializer serializer = XmlUtils.serializerInstance();
-            final XmlSerializer serializer = new FastXmlSerializer();
-            serializer.setOutput(bos, "utf-8");
-            serializer.startDocument(null, true);
-            serializer.setFeature("http://xmlpull.org/v1/doc/features.html#indent-output", true);
+            val serializer: XmlSerializer = FastXmlSerializer()
+            serializer.setOutput(bos, "utf-8")
+            serializer.startDocument(null, true)
+            serializer.setFeature("http://xmlpull.org/v1/doc/features.html#indent-output", true)
 
-            serializer.startTag(null, TAG_USERS);
-            serializer.attribute(null, ATTR_NEXT_SERIAL_NO, Integer.toString(mNextSerialNumber));
-            serializer.attribute(null, ATTR_USER_VERSION, Integer.toString(mUserVersion));
+            serializer.startTag(null, TAG_USERS)
+            serializer.attribute(null, ATTR_NEXT_SERIAL_NO, mNextSerialNumber.toString())
+            serializer.attribute(null, ATTR_USER_VERSION, mUserVersion.toString())
 
-            for (int i = 0; i < mUsers.size(); i++) {
-                VUserInfo user = mUsers.valueAt(i);
-                serializer.startTag(null, TAG_USER);
-                serializer.attribute(null, ATTR_ID, Integer.toString(user.id));
-                serializer.endTag(null, TAG_USER);
+            for (i in 0..<mUsers.size) {
+                val user = mUsers.valueAt(i)
+                serializer.startTag(null, TAG_USER)
+                serializer.attribute(null, ATTR_ID, user.id.toString())
+                serializer.endTag(null, TAG_USER)
             }
 
-            serializer.endTag(null, TAG_USERS);
+            serializer.endTag(null, TAG_USERS)
 
-            serializer.endDocument();
-            userListFile.finishWrite(fos);
-        } catch (Exception e) {
-            userListFile.failWrite(fos);
-            VLog.e(LOG_TAG, "Error writing user list");
+            serializer.endDocument()
+            userListFile.finishWrite(fos)
+        } catch (_: Exception) {
+            userListFile.failWrite(fos)
+            Timber.e("Error writing user list")
         }
     }
 
-    private VUserInfo readUser(int id) {
-        int flags = 0;
-        int serialNumber = id;
-        String name = null;
-        String iconPath = null;
-        long creationTime = 0L;
-        long lastLoggedInTime = 0L;
-        boolean partial = false;
+    private fun readUser(id: Int): VUserInfo? {
+        var flags = 0
+        var serialNumber = id
+        var name: String? = null
+        var iconPath: String? = null
+        var creationTime = 0L
+        var lastLoggedInTime = 0L
+        var partial = false
 
-        FileInputStream fis = null;
+        var fis: FileInputStream? = null
         try {
-            AtomicFile userFile =
-                    new AtomicFile(new File(mUsersDir, Integer.toString(id) + ".xml"));
-            fis = userFile.openRead();
-            XmlPullParser parser = Xml.newPullParser();
-            parser.setInput(fis, null);
-            int type;
-            while ((type = parser.next()) != XmlPullParser.START_TAG
-                    && type != XmlPullParser.END_DOCUMENT) {
-                ;
+            val userFile =
+                AtomicFile(File(mUsersDir, "$id.xml"))
+            fis = userFile.openRead()
+            val parser = Xml.newPullParser()
+            parser.setInput(fis, null)
+            var type: Int
+            while ((parser.next().also { type = it }) != XmlPullParser.START_TAG
+                && type != XmlPullParser.END_DOCUMENT
+            ) {
             }
 
             if (type != XmlPullParser.START_TAG) {
-                VLog.e(LOG_TAG, "Unable to read user " + id);
-                return null;
+                Timber.e( "Unable to read user $id")
+                return null
             }
 
-            if (parser.getName().equals(TAG_USER)) {
-                int storedId = readIntAttribute(parser, ATTR_ID, -1);
+            if (parser.name == TAG_USER) {
+                val storedId = readIntAttribute(parser, ATTR_ID, -1)
                 if (storedId != id) {
-                    VLog.e(LOG_TAG, "User id does not match the file name");
-                    return null;
+                    Timber.e("User id does not match the file name")
+                    return null
                 }
-                serialNumber = readIntAttribute(parser, ATTR_SERIAL_NO, id);
-                flags = readIntAttribute(parser, ATTR_FLAGS, 0);
-                iconPath = parser.getAttributeValue(null, ATTR_ICON_PATH);
-                creationTime = readLongAttribute(parser, ATTR_CREATION_TIME, 0);
-                lastLoggedInTime = readLongAttribute(parser, ATTR_LAST_LOGGED_IN_TIME, 0);
-                String valueString = parser.getAttributeValue(null, ATTR_PARTIAL);
-                if ("true".equals(valueString)) {
-                    partial = true;
+                serialNumber = readIntAttribute(parser, ATTR_SERIAL_NO, id)
+                flags = readIntAttribute(parser, ATTR_FLAGS, 0)
+                iconPath = parser.getAttributeValue(null, ATTR_ICON_PATH)
+                creationTime = readLongAttribute(parser, ATTR_CREATION_TIME, 0)
+                lastLoggedInTime = readLongAttribute(parser, ATTR_LAST_LOGGED_IN_TIME, 0)
+                val valueString = parser.getAttributeValue(null, ATTR_PARTIAL)
+                if ("true" == valueString) {
+                    partial = true
                 }
 
-                while ((type = parser.next()) != XmlPullParser.START_TAG
-                        && type != XmlPullParser.END_DOCUMENT) {
+                while ((parser.next().also { type = it }) != XmlPullParser.START_TAG
+                    && type != XmlPullParser.END_DOCUMENT
+                ) {
                 }
-                if (type == XmlPullParser.START_TAG && parser.getName().equals(TAG_NAME)) {
-                    type = parser.next();
+                if (type == XmlPullParser.START_TAG && parser.name == TAG_NAME) {
+                    type = parser.next()
                     if (type == XmlPullParser.TEXT) {
-                        name = parser.getText();
+                        name = parser.text
                     }
                 }
             }
 
-            VUserInfo userInfo = new VUserInfo(id, name, iconPath, flags);
-            userInfo.serialNumber = serialNumber;
-            userInfo.creationTime = creationTime;
-            userInfo.lastLoggedInTime = lastLoggedInTime;
-            userInfo.partial = partial;
-            return userInfo;
-
-        } catch (IOException ioe) {
-        } catch (XmlPullParserException pe) {
+            val userInfo = VUserInfo(id, name, iconPath, flags)
+            userInfo.serialNumber = serialNumber
+            userInfo.creationTime = creationTime
+            userInfo.lastLoggedInTime = lastLoggedInTime
+            userInfo.partial = partial
+            return userInfo
+        } catch (_: IOException) {
+        } catch (_: XmlPullParserException) {
         } finally {
             if (fis != null) {
                 try {
-                    fis.close();
-                } catch (IOException e) {
+                    fis.close()
+                } catch (_: IOException) {
                 }
             }
         }
-        return null;
+        return null
     }
 
-    private int readIntAttribute(XmlPullParser parser, String attr, int defaultValue) {
-        String valueString = parser.getAttributeValue(null, attr);
-        if (valueString == null) return defaultValue;
-        try {
-            return Integer.parseInt(valueString);
-        } catch (NumberFormatException nfe) {
-            return defaultValue;
+    private fun readIntAttribute(parser: XmlPullParser, attr: String?, defaultValue: Int): Int {
+        val valueString = parser.getAttributeValue(null, attr) ?: return defaultValue
+        return try {
+            valueString.toInt()
+        } catch (_: NumberFormatException) {
+            defaultValue
         }
     }
 
-    private long readLongAttribute(XmlPullParser parser, String attr, long defaultValue) {
-        String valueString = parser.getAttributeValue(null, attr);
-        if (valueString == null) return defaultValue;
-        try {
-            return Long.parseLong(valueString);
-        } catch (NumberFormatException nfe) {
-            return defaultValue;
+    private fun readLongAttribute(parser: XmlPullParser, attr: String?, defaultValue: Long): Long {
+        val valueString = parser.getAttributeValue(null, attr) ?: return defaultValue
+        return try {
+            valueString.toLong()
+        } catch (_: NumberFormatException) {
+            defaultValue
         }
     }
 
-    @Override
-    public VUserInfo createUser(String name, int flags) {
-        checkManageUsersPermission("Only the system can create users");
+    override fun createUser(name: String?, flags: Int): VUserInfo? {
+        checkManageUsersPermission("Only the system can create users")
 
-        final long ident = Binder.clearCallingIdentity();
-        final VUserInfo userInfo;
+        val ident = clearCallingIdentity()
+        val userInfo: VUserInfo
         try {
-            synchronized (mInstallLock) {
-                synchronized (mPackagesLock) {
-                    if (isUserLimitReachedLocked()) return null;
-                    int userId = getNextAvailableIdLocked();
-                    userInfo = new VUserInfo(userId, name, null, flags);
-                    File userPath = new File(mBaseUserPath, Integer.toString(userId));
-                    userInfo.serialNumber = mNextSerialNumber++;
-                    long now = System.currentTimeMillis();
-                    userInfo.creationTime = (now > EPOCH_PLUS_30_YEARS) ? now : 0;
-                    userInfo.partial = true;
-                    VEnvironment.getUserSystemDirectory(userInfo.id).mkdirs();
-                    mUsers.put(userId, userInfo);
-                    writeUserListLocked();
-                    writeUserLocked(userInfo);
-                    mPm.createNewUser(userId, userPath);
-                    userInfo.partial = false;
-                    writeUserLocked(userInfo);
-                    updateUserIdsLocked();
+            synchronized(mInstallLock) {
+                synchronized(mPackagesLock) {
+                    if (this.isUserLimitReachedLocked) return null
+                    val userId = this.nextAvailableIdLocked
+                    userInfo = VUserInfo(userId, name, null, flags)
+                    val userPath = File(mBaseUserPath, userId.toString())
+                    userInfo.serialNumber = mNextSerialNumber++
+                    val now = System.currentTimeMillis()
+                    userInfo.creationTime = if (now > EPOCH_PLUS_30_YEARS) now else 0
+                    userInfo.partial = true
+                    VEnvironment.getUserSystemDirectory(userInfo.id).mkdirs()
+                    mUsers.put(userId, userInfo)
+                    writeUserListLocked()
+                    writeUserLocked(userInfo)
+                    mPm.createNewUser(userId, userPath)
+                    userInfo.partial = false
+                    writeUserLocked(userInfo)
+                    updateUserIdsLocked()
                 }
             }
-            Intent addedIntent = new Intent(Constants.ACTION_USER_ADDED);
-            addedIntent.putExtra(Constants.EXTRA_USER_HANDLE, userInfo.id);
-            VActivityManagerService.get().sendBroadcastAsUser(addedIntent, VUserHandle.ALL,
-                        null);
+            val addedIntent = Intent(Constants.ACTION_USER_ADDED)
+            addedIntent.putExtra(Constants.EXTRA_USER_HANDLE, userInfo.id)
+            VActivityManagerService.get().sendBroadcastAsUser(
+                addedIntent, VUserHandle.ALL,
+                null
+            )
         } finally {
-            Binder.restoreCallingIdentity(ident);
+            restoreCallingIdentity(ident)
         }
-        return userInfo;
+        return userInfo
     }
 
     /**
@@ -711,177 +652,224 @@ public class VUserManagerService extends IUserManager.Stub {
      * after the user's processes have been terminated.
      * @param userHandle the user's id
      */
-    public boolean removeUser(int userHandle) {
-        checkManageUsersPermission("Only the system can remove users");
-        final VUserInfo user;
-        synchronized (mPackagesLock) {
-            user = mUsers.get(userHandle);
+    override fun removeUser(userHandle: Int): Boolean {
+        checkManageUsersPermission("Only the system can remove users")
+        val user: VUserInfo?
+        synchronized(mPackagesLock) {
+            user = mUsers.get(userHandle)
             if (userHandle == 0 || user == null) {
-                return false;
+                return false
             }
-            mRemovingUserIds.add(userHandle);
+            mRemovingUserIds.add(userHandle)
             // Set this to a partially created user, so that the user will be purged
             // on next startup, in case the runtime stops now before stopping and
             // removing the user completely.
-            user.partial = true;
-            writeUserLocked(user);
+            user.partial = true
+            writeUserLocked(user)
         }
-        if (DBG) VLog.i(LOG_TAG, "Stopping user " + userHandle);
-        int res = VActivityManagerService.get().stopUser(userHandle,
-                    new IStopUserCallback.Stub() {
-                        @Override
-                        public void userStopped(int userId) {
-                            finishRemoveUser(userId);
-                        }
-                        @Override
-                        public void userStopAborted(int userId) {
-                        }
-            });
-        return res == ActivityManagerCompat.USER_OP_SUCCESS;
+        if (DBG) Timber.i( "Stopping user $userHandle")
+        val res = VActivityManagerService.get().stopUser(
+            userHandle,
+            object : IStopUserCallback.Stub() {
+                override fun userStopped(userId: Int) {
+                    finishRemoveUser(userId)
+                }
+
+                override fun userStopAborted(userId: Int) {
+                }
+            })
+        return res == ActivityManagerCompat.USER_OP_SUCCESS
     }
 
-    void finishRemoveUser(final int userHandle) {
-        if (DBG) VLog.i(LOG_TAG, "finishRemoveUser " + userHandle);
+    fun finishRemoveUser(userHandle: Int) {
+        if (DBG) Timber.i( "finishRemoveUser $userHandle")
         // Let other services shutdown any activity and clean up their state before completely
         // wiping the user's system directory and removing from the user list
-        long identity = Binder.clearCallingIdentity();
+        val identity = clearCallingIdentity()
         try {
-            Intent addedIntent = new Intent(Constants.ACTION_USER_REMOVED);
-            addedIntent.putExtra(Constants.EXTRA_USER_HANDLE, userHandle);
-            VActivityManagerService.get().sendOrderedBroadcastAsUser(addedIntent, VUserHandle.ALL,
-                   null,
-                    new BroadcastReceiver() {
-                        @Override
-                        public void onReceive(Context context, Intent intent) {
-                            if (DBG) {
-                                VLog.i(LOG_TAG,
-                                        "USER_REMOVED broadcast sent, cleaning up user data "
-                                        + userHandle);
-                            }
-                            new Thread() {
-                                public void run() {
-                                    synchronized (mInstallLock) {
-                                        synchronized (mPackagesLock) {
-                                            removeUserStateLocked(userHandle);
-                                        }
+            val addedIntent = Intent(Constants.ACTION_USER_REMOVED)
+            addedIntent.putExtra(Constants.EXTRA_USER_HANDLE, userHandle)
+            VActivityManagerService.get().sendOrderedBroadcastAsUser(
+                addedIntent, VUserHandle.ALL,
+                null,
+                object : BroadcastReceiver() {
+                    override fun onReceive(context: Context?, intent: Intent?) {
+                        if (DBG) {
+                            Timber.i(
+                                "USER_REMOVED broadcast sent, cleaning up user data %s", userHandle
+                            )
+                        }
+                        object : Thread() {
+                            override fun run() {
+                                synchronized(mInstallLock) {
+                                    synchronized(mPackagesLock) {
+                                        removeUserStateLocked(userHandle)
                                     }
                                 }
-                            }.start();
-                        }
-                    },
-                    null, Activity.RESULT_OK, null, null);
+                            }
+                        }.start()
+                    }
+                },
+                null, Activity.RESULT_OK, null, null
+            )
         } finally {
-            Binder.restoreCallingIdentity(identity);
+            restoreCallingIdentity(identity)
         }
     }
 
-    private void removeUserStateLocked(int userHandle) {
+    private fun removeUserStateLocked(userHandle: Int) {
         // Cleanup package manager settings
-        mPm.cleanUpUser(userHandle);
+        mPm.cleanUpUser(userHandle)
 
         // Remove this user from the list
-        mUsers.remove(userHandle);
-        mRemovingUserIds.remove(userHandle);
+        mUsers.remove(userHandle)
+        mRemovingUserIds.remove(userHandle)
         // Remove user file
-        AtomicFile userFile = new AtomicFile(new File(mUsersDir, userHandle + ".xml"));
-        userFile.delete();
+        val userFile = AtomicFile(File(mUsersDir, "$userHandle.xml"))
+        userFile.delete()
         // Update the user list
-        writeUserListLocked();
-        updateUserIdsLocked();
-        removeDirectoryRecursive(VEnvironment.getUserSystemDirectory(userHandle));
+        writeUserListLocked()
+        updateUserIdsLocked()
+        removeDirectoryRecursive(VEnvironment.getUserSystemDirectory(userHandle))
     }
 
-    private void removeDirectoryRecursive(File parent) {
+    private fun removeDirectoryRecursive(parent: File) {
         if (parent.isDirectory()) {
-            String[] files = parent.list();
-            for (String filename : files) {
-                File child = new File(parent, filename);
-                removeDirectoryRecursive(child);
+            val files = parent.list()
+            for (filename in files!!) {
+                val child = File(parent, filename)
+                removeDirectoryRecursive(child)
             }
         }
-        parent.delete();
+        parent.delete()
     }
 
-    @Override
-    public int getUserSerialNumber(int userHandle) {
-        synchronized (mPackagesLock) {
-            if (!exists(userHandle)) return -1;
-            return getUserInfoLocked(userHandle).serialNumber;
+    override fun getUserSerialNumber(userHandle: Int): Int {
+        synchronized(mPackagesLock) {
+            if (!exists(userHandle)) return -1
+            return getUserInfoLocked(userHandle)!!.serialNumber
         }
     }
 
-    @Override
-    public int getUserHandle(int userSerialNumber) {
-        synchronized (mPackagesLock) {
-            for (int userId : mUserIds) {
-                if (getUserInfoLocked(userId).serialNumber == userSerialNumber) return userId;
+    override fun getUserHandle(userSerialNumber: Int): Int {
+        synchronized(mPackagesLock) {
+            for (userId in this.userIdsLPr) {
+                if (getUserInfoLocked(userId)!!.serialNumber == userSerialNumber) return userId
             }
             // Not found
-            return -1;
+            return -1
         }
     }
 
     /**
      * Caches the list of user ids in an array, adjusting the array size when necessary.
      */
-    private void updateUserIdsLocked() {
-        int num = 0;
-        for (int i = 0; i < mUsers.size(); i++) {
+    private fun updateUserIdsLocked() {
+        var num = 0
+        for (i in 0..<mUsers.size) {
             if (!mUsers.valueAt(i).partial) {
-                num++;
+                num++
             }
         }
-        final int[] newUsers = new int[num];
-        int n = 0;
-        for (int i = 0; i < mUsers.size(); i++) {
+        val newUsers = IntArray(num)
+        var n = 0
+        for (i in 0..<mUsers.size) {
             if (!mUsers.valueAt(i).partial) {
-                newUsers[n++] = mUsers.keyAt(i);
+                newUsers[n++] = mUsers.keyAt(i)
             }
         }
-        mUserIds = newUsers;
+        this.userIdsLPr = newUsers
     }
 
     /**
      * Make a note of the last started time of a user.
      * @param userId the user that was just foregrounded
      */
-    public void userForeground(int userId) {
-        synchronized (mPackagesLock) {
-            VUserInfo user = mUsers.get(userId);
-            long now = System.currentTimeMillis();
+    fun userForeground(userId: Int) {
+        synchronized(mPackagesLock) {
+            val user = mUsers.get(userId)
+            val now = System.currentTimeMillis()
             if (user == null || user.partial) {
-                VLog.w(LOG_TAG, "userForeground: unknown user #" + userId);
-                return;
+                Timber.w("userForeground: unknown user #$userId")
+                return
             }
             if (now > EPOCH_PLUS_30_YEARS) {
-                user.lastLoggedInTime = now;
-                writeUserLocked(user);
+                user.lastLoggedInTime = now
+                writeUserLocked(user)
             }
         }
     }
 
-    /**
-     * Returns the next available user id, filling in any holes in the ids.
-     * TODO: May not be a good idea to recycle ids, in case it results in confusion
-     * for data and battery stats collection, or unexpected cross-talk.
-     * @return
-     */
-    private int getNextAvailableIdLocked() {
-        synchronized (mPackagesLock) {
-            int i = mNextUserId;
-            while (i < Integer.MAX_VALUE) {
-                if (mUsers.indexOfKey(i) < 0 && !mRemovingUserIds.contains(i)) {
-                    break;
+    private val nextAvailableIdLocked: Int
+        /**
+         * Returns the next available user id, filling in any holes in the ids.
+         * TODO: May not be a good idea to recycle ids, in case it results in confusion
+         * for data and battery stats collection, or unexpected cross-talk.
+         * @return
+         */
+        get() {
+            synchronized(mPackagesLock) {
+                var i = mNextUserId
+                while (i < Int.MAX_VALUE) {
+                    if (mUsers.indexOfKey(i) < 0 && !mRemovingUserIds.contains(i)) {
+                        break
+                    }
+                    i++
                 }
-                i++;
+                mNextUserId = i + 1
+                return i
             }
-            mNextUserId = i + 1;
-            return i;
         }
+
+    override fun dump(fd: FileDescriptor, args: Array<String>?) {
     }
 
-    @Override
-    protected void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
+    companion object {
+        private const val DBG = false
 
+        private const val TAG_NAME = "name"
+        private const val ATTR_FLAGS = "flags"
+        private const val ATTR_ICON_PATH = "icon"
+        private const val ATTR_ID = "id"
+        private const val ATTR_CREATION_TIME = "created"
+        private const val ATTR_LAST_LOGGED_IN_TIME = "lastLoggedIn"
+        private const val ATTR_SERIAL_NO = "serialNumber"
+        private const val ATTR_NEXT_SERIAL_NO = "nextSerialNumber"
+        private const val ATTR_PARTIAL = "partial"
+        private const val ATTR_USER_VERSION = "version"
+        private const val TAG_USERS = "users"
+        private const val TAG_USER = "user"
+
+        private val USER_INFO_DIR = "system" + File.separator + "users"
+        private const val USER_LIST_FILENAME = "userlist.xml"
+        private const val USER_PHOTO_FILENAME = "photo.png"
+
+        private const val MIN_USER_ID = 1
+
+        private const val USER_VERSION = 1
+
+        private const val EPOCH_PLUS_30_YEARS = 30L * 365 * 24 * 60 * 60 * 1000L // ms
+        private lateinit var sInstance: VUserManagerService
+        @JvmStatic
+        fun get(): VUserManagerService {
+            synchronized(VUserManagerService::class.java) {
+                return sInstance
+            }
+        }
+
+        /**
+         * Enforces that only the system UID or root's UID or apps that have the
+         * {android.Manifest.permission.MANAGE_USERS MANAGE_USERS}
+         * permission can make certain calls to the VUserManager.
+         * 
+         * @param message used as message if SecurityException is thrown
+         * @throws SecurityException if the caller is not system or root
+         */
+        private fun checkManageUsersPermission(message: String?) {
+            val uid = VBinder.getCallingUid()
+            if (uid != VirtualCore.get().myUid()) {
+                throw SecurityException("You need MANAGE_USERS permission to: $message")
+            }
+        }
     }
 }

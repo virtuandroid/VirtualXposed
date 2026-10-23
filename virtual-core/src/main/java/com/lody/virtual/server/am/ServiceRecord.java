@@ -8,6 +8,8 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
 
+import androidx.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -48,7 +50,7 @@ public class ServiceRecord extends Binder {
 	}
 
 
-	IntentBindRecord peekBinding(Intent service) {
+	@Nullable IntentBindRecord peekBinding(Intent service) {
 		synchronized (bindings) {
 			for (IntentBindRecord bindRecord : bindings) {
 				if (bindRecord.intent.filterEquals(service)) {
