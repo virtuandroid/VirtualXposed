@@ -30,11 +30,10 @@ class StubJob : Service() {
     private val mService: IJobService = object : IJobService.Stub() {
         @Throws(RemoteException::class)
         override fun startJob(jobParams: JobParameters) {
-            val vuid = VBinder.getCallingUid()
             val jobId = jobParams.jobId
             val binder = mirror.android.app.job.JobParameters.callback.get(jobParams)
             val callback = IJobCallback.Stub.asInterface(binder)
-            val entry = get().findJobByVirtualJobId(jobId, vuid)
+            val entry = get().findJobByVirtualJobId(jobId)
             if (entry == null) {
                 emptyCallback(callback, jobId)
                 mScheduler!!.cancel(jobId)

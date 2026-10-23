@@ -38,49 +38,19 @@ class VJobSchedulerService private constructor() : IJobScheduler.Stub() {
         readJobs()
     }
 
-    class JobId : Parcelable {
-        @JvmField
-        var vuid: Int
-        @JvmField
-        var packageName: String
-
+    data class JobId(
+        @JvmField val vuid: Int,
+        @JvmField val packageName: String,
         /**
          * The id given by User.
          */
-        @JvmField
-        var clientJobId: Int
-
-        internal constructor(vuid: Int, packageName: String, id: Int) {
-            this.vuid = vuid
-            this.packageName = packageName
-            this.clientJobId = id
-        }
-
-
-        internal constructor(p: Parcel) {
-            this.vuid = p.readInt()
-            this.packageName = p.readString()!!
-            this.clientJobId = p.readInt()
-        }
-
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (other == null || javaClass != other.javaClass) return false
-
-            val jobId = other as JobId
-
-            return vuid == jobId.vuid && clientJobId == jobId.clientJobId && TextUtils.equals(
-                packageName,
-                jobId.packageName
-            )
-        }
-
-        override fun hashCode(): Int {
-            var result = vuid
-            result = 31 * result + packageName.hashCode()
-            result = 31 * result + clientJobId
-            return result
-        }
+        @JvmField val clientJobId: Int
+    ) : Parcelable {
+        internal constructor(p: Parcel) : this(
+            p.readInt(),
+            p.readString()!!,
+            p.readInt(),
+        )
 
         override fun describeContents(): Int {
             return 0
@@ -106,26 +76,19 @@ class VJobSchedulerService private constructor() : IJobScheduler.Stub() {
         }
     }
 
-    class JobConfig : Parcelable {
+    data class JobConfig(
         /**
          * The id given by VA.
          */
-        val virtualJobId: Int
-        @JvmField
-        var serviceName: String?
+        val virtualJobId: Int,
+        var serviceName: String?,
         var extras: PersistableBundle?
-
-        internal constructor(virtualJobId: Int, serviceName: String?, extra: PersistableBundle?) {
-            this.virtualJobId = virtualJobId
-            this.serviceName = serviceName
-            this.extras = extra
-        }
-
-        internal constructor(p: Parcel) {
-            this.virtualJobId = p.readInt()
-            this.serviceName = p.readString()
-            this.extras = p.readParcelable<PersistableBundle?>(PersistableBundle::class.java.getClassLoader())
-        }
+    ) : Parcelable {
+        internal constructor(p: Parcel) : this(
+            p.readInt(),
+            p.readString(),
+            p.readParcelable<PersistableBundle?>(PersistableBundle::class.java.getClassLoader())
+        )
 
         override fun describeContents(): Int {
             return 0
@@ -293,7 +256,7 @@ class VJobSchedulerService private constructor() : IJobScheduler.Stub() {
                     iterator.remove()
                     continue
                 }
-                val jobEntry = findJobByVirtualJobId(job.id, vuid)
+                val jobEntry = findJobByVirtualJobId(job.id)
                 if (jobEntry == null) {
                     iterator.remove()
                     continue
@@ -325,9 +288,11 @@ class VJobSchedulerService private constructor() : IJobScheduler.Stub() {
     }
 
 
-    fun findJobByVirtualJobId(virtualJobId: Int, vuid: Int): MutableMap.MutableEntry<JobId, JobConfig>? {
+    fun findJobByVirtualJobId(
+        virtualJobId: Int,
+    ): MutableMap.MutableEntry<JobId, JobConfig>? {
         synchronized(mJobStore) {
-            return mJobStore.entries.firstOrNull { it.value.virtualJobId == virtualJobId && it.key.vuid == vuid }
+            return mJobStore.entries.firstOrNull { it.value.virtualJobId == virtualJobId }
         }
     }
 
