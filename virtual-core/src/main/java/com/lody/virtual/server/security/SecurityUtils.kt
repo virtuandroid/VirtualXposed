@@ -6,6 +6,8 @@ import com.lody.virtual.client.ipc.VPackageManager
 import com.lody.virtual.os.VBinder
 import com.lody.virtual.os.VUserHandle
 import com.lody.virtual.server.permission.VPermissionManager
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
 import kotlin.jvm.Throws
 
 object SecurityUtils {
@@ -18,16 +20,24 @@ object SecurityUtils {
         }
     }
 
+    @OptIn(ExperimentalContracts::class)
     @JvmStatic
     @Throws(SecurityException::class)
     fun assertPackageMatchesCallingUid(packageName: String?) {
+        contract {
+            returns() implies (packageName != null)
+        }
         enforceCallingPackage(packageName, VBinder.getCallingUid())
     }
 
     // https://android.googlesource.com/platform/frameworks/base/+/94b4c163b7dfe5ce3607f7bb8456f9573f7de57d/services/core/java/com/android/server/am/ActivityManagerService.java#3658
+    @OptIn(ExperimentalContracts::class)
     @JvmStatic
     @Throws(SecurityException::class)
     fun enforceCallingPackage(packageName: String?, callingUid: Int) {
+        contract {
+            returns() implies (packageName != null)
+        }
         if (packageName == null) {
             throw IllegalArgumentException("callingPackage cannot be null")
         }

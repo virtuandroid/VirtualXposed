@@ -1,94 +1,85 @@
-package com.lody.virtual.server.vs;
+package com.lody.virtual.server.vs
 
-import android.os.RemoteException;
-import android.util.SparseArray;
-
-import com.lody.virtual.server.IVirtualStorageService;
-import com.lody.virtual.server.pm.VUserManagerService;
-
-import java.util.HashMap;
+import android.os.RemoteException
+import android.util.SparseArray
+import com.lody.virtual.server.IVirtualStorageService
+import com.lody.virtual.server.pm.VUserManagerService
 
 /**
  * @author Lody
  */
+class VirtualStorageService private constructor() : IVirtualStorageService.Stub() {
+    private val mLayer = VSPersistenceLayer(this)
+    val configs: SparseArray<HashMap<String?, VSConfig?>?> =
+        SparseArray()
 
-public class VirtualStorageService extends IVirtualStorageService.Stub {
-
-    private static final VirtualStorageService sService = new VirtualStorageService();
-    private final VSPersistenceLayer mLayer = new VSPersistenceLayer(this);
-    private final SparseArray<HashMap<String, VSConfig>> mConfigs = new SparseArray<>();
-
-    public static VirtualStorageService get() {
-        return sService;
+    init {
+        mLayer.read()
     }
 
-    private VirtualStorageService() {
-        mLayer.read();
-    }
-
-    SparseArray<HashMap<String, VSConfig>> getConfigs() {
-        return mConfigs;
-    }
-
-    @Override
-    public void setVirtualStorage(String packageName, int userId, String vsPath) throws RemoteException {
-        checkUserId(userId);
-        synchronized (mConfigs) {
-            VSConfig config = getOrCreateVSConfigLocked(packageName, userId);
-            config.vsPath = vsPath;
-            mLayer.save();
+    @Throws(RemoteException::class)
+    override fun setVirtualStorage(packageName: String?, userId: Int, vsPath: String?) {
+        checkUserId(userId)
+        synchronized(this.configs) {
+            val config = getOrCreateVSConfigLocked(packageName, userId)
+            config.vsPath = vsPath
+            mLayer.save()
         }
     }
 
-    private VSConfig getOrCreateVSConfigLocked(String packageName, int userId) {
-        HashMap<String, VSConfig> userMap = mConfigs.get(userId);
+    private fun getOrCreateVSConfigLocked(packageName: String?, userId: Int): VSConfig {
+        var userMap = configs.get(userId)
         if (userMap == null) {
-            userMap = new HashMap<>();
-            mConfigs.put(userId, userMap);
+            userMap = HashMap()
+            configs.put(userId, userMap)
         }
-        VSConfig config = userMap.get(packageName);
+        var config = userMap[packageName]
         if (config == null) {
-            config = new VSConfig();
-            config.enable = false;
-            userMap.put(packageName, config);
+            config = VSConfig()
+            config.enable = false
+            userMap[packageName] = config
         }
-        return config;
+        return config
     }
 
 
-    @Override
-    public String getVirtualStorage(String packageName, int userId) throws RemoteException {
-        checkUserId(userId);
-        synchronized (mConfigs) {
-            VSConfig config = getOrCreateVSConfigLocked(packageName, userId);
-            return config.vsPath;
+    @Throws(RemoteException::class)
+    override fun getVirtualStorage(packageName: String?, userId: Int): String? {
+        checkUserId(userId)
+        synchronized(this.configs) {
+            val config = getOrCreateVSConfigLocked(packageName, userId)
+            return config.vsPath
         }
     }
 
-    @Override
-    public void setVirtualStorageState(String packageName, int userId, boolean enable) throws RemoteException {
-        checkUserId(userId);
-        synchronized (mConfigs) {
-            VSConfig config = getOrCreateVSConfigLocked(packageName, userId);
-            config.enable = enable;
-            mLayer.save();
+    @Throws(RemoteException::class)
+    override fun setVirtualStorageState(packageName: String?, userId: Int, enable: Boolean) {
+        checkUserId(userId)
+        synchronized(this.configs) {
+            val config = getOrCreateVSConfigLocked(packageName, userId)
+            config.enable = enable
+            mLayer.save()
         }
-
     }
 
-    @Override
-    public boolean isVirtualStorageEnable(String packageName, int userId) throws RemoteException {
-        checkUserId(userId);
-        synchronized (mConfigs) {
-            VSConfig config = getOrCreateVSConfigLocked(packageName, userId);
-            return config.enable;
+    @Throws(RemoteException::class)
+    override fun isVirtualStorageEnable(packageName: String?, userId: Int): Boolean {
+        checkUserId(userId)
+        synchronized(this.configs) {
+            val config = getOrCreateVSConfigLocked(packageName, userId)
+            return config.enable
         }
-
     }
 
-    private void checkUserId(int userId) {
-        if (!VUserManagerService.get().exists(userId)) {
-            throw new IllegalStateException("Invalid userId " + userId);
+    private fun checkUserId(userId: Int) {
+        check(VUserManagerService.get().exists(userId)) { "Invalid userId $userId" }
+    }
+
+    companion object {
+        private val sService = VirtualStorageService()
+        @JvmStatic
+        fun get(): VirtualStorageService {
+            return sService
         }
     }
 }
