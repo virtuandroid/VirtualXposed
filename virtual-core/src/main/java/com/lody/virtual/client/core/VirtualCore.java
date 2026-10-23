@@ -837,22 +837,12 @@ public final class VirtualCore {
         IAppRequestListener inner = new IAppRequestListener.Stub() {
             @Override
             public void onRequestInstall(final String path) {
-                VirtualRuntime.getUIHandler().post(new Runnable() {
-                    @Override
-                    public void run() {
-                        listener.onRequestInstall(path);
-                    }
-                });
+                VirtualRuntime.getUIHandler().post(() -> listener.onRequestInstall(path));
             }
 
             @Override
             public void onRequestUninstall(final String pkg) {
-                VirtualRuntime.getUIHandler().post(new Runnable() {
-                    @Override
-                    public void run() {
-                        listener.onRequestUninstall(pkg);
-                    }
-                });
+                VirtualRuntime.getUIHandler().post(() -> listener.onRequestUninstall(pkg));
             }
         };
         try {

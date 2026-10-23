@@ -10,6 +10,7 @@ import com.lody.virtual.client.core.VirtualCore;
 import java.io.File;
 
 import io.virtualapp.sys.InstallerActivity;
+import timber.log.Timber;
 
 /**
  * @author Lody
@@ -25,13 +26,14 @@ public class MyAppRequestListener implements VirtualCore.AppRequestListener {
 
     @Override
     public void onRequestInstall(String path) {
+        // TODO permission check
         try {
             Intent t = new Intent(context, InstallerActivity.class);
             t.setDataAndType(Uri.fromFile(new File(path)), "application/vnd.android.package-archive");
             t.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(t);
         } catch (Throwable e) {
-            e.printStackTrace();
+            Timber.e(e);
         }
     }
 

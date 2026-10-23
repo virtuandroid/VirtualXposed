@@ -586,8 +586,8 @@ class VAppManagerService : IAppManager.Stub() {
         }
     }
 
+    // Guest apps need to invoke mAppRequestListener.onRequestInstall()
     override fun getAppRequestListener(): IAppRequestListener? {
-        assertSystemCaller()
         return mAppRequestListener
     }
 

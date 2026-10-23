@@ -55,8 +55,7 @@ class VPackageManagerService : IPackageManager.Stub() {
     private val mActivities = ActivityIntentResolver()
     private val mServices = ServiceIntentResolver()
     private val mReceivers = ActivityIntentResolver()
-    private val mProviders =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) ProviderIntentResolver() else null
+    private val mProviders = ProviderIntentResolver()
 
     private val mProvidersByComponent = HashMap<ComponentName?, ProviderComponent>()
 
@@ -105,9 +104,7 @@ class VPackageManagerService : IPackageManager.Stub() {
             if (p.info.processName == null) {
                 p.info.processName = p.info.packageName
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                mProviders!!.addProvider(p)
-            }
+            mProviders.addProvider(p)
             val names: Array<String?> =
                 p.info.authority.split(";".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
             for (name in names) {
@@ -151,9 +148,7 @@ class VPackageManagerService : IPackageManager.Stub() {
         N = pkg.providers.size
         for (i in 0..<N) {
             val p = pkg.providers[i]
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                mProviders!!.removeProvider(p)
-            }
+            mProviders.removeProvider(p)
             val names: Array<String?> =
                 p.info.authority.split(";".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
             for (name in names) {
@@ -696,7 +691,7 @@ class VPackageManagerService : IPackageManager.Stub() {
         }
         // reader
         synchronized(mPackages) {
-            val pkgName = intent.getPackage() ?: return mProviders!!.queryIntent(
+            val pkgName = intent.getPackage() ?: return mProviders.queryIntent(
                 intent,
                 resolvedType,
                 flags,
@@ -704,7 +699,7 @@ class VPackageManagerService : IPackageManager.Stub() {
             )
             val pkg = mPackages[pkgName]
             if (pkg != null) {
-                return mProviders!!.queryIntentForPackage(
+                return mProviders.queryIntentForPackage(
                     intent,
                     resolvedType,
                     flags,
