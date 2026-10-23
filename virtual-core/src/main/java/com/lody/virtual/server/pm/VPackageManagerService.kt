@@ -52,7 +52,6 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class VPackageManagerService : IPackageManager.Stub() {
     private val mResolveInfo: ResolveInfo?
-
     private val mActivities = ActivityIntentResolver()
     private val mServices = ServiceIntentResolver()
     private val mReceivers = ActivityIntentResolver()
@@ -259,6 +258,7 @@ class VPackageManagerService : IPackageManager.Stub() {
         var flags = flags
         checkUserId(userId)
         enforceCallingUser(userId)
+
         flags = updateFlagsNought(flags)
         synchronized(mPackages) {
             val p = mPackages[component.packageName]
@@ -272,6 +272,13 @@ class VPackageManagerService : IPackageManager.Stub() {
                         ps.readUserState(userId),
                         userId
                     )
+                    // TODO Log non-exported activities
+
+                    val callingPackage = VBinder.getCallingPackageName()
+                    if (!activityInfo.exported && callingPackage != p.packageName) {
+                        throw SecurityException("Unable to access non-exported activity in " + p.packageName + " from " + callingPackage)
+                    }
+
                     ComponentFixer.fixComponentInfo(ps, activityInfo, userId)
                     return activityInfo
                 }
@@ -413,12 +420,11 @@ class VPackageManagerService : IPackageManager.Stub() {
         flags: Int,
         userId: Int
     ): ResolveInfo? {
-        var flags = flags
         checkUserId(userId)
         enforceCallingUser(userId)
-        flags = updateFlagsNought(flags)
-        val query = queryIntentActivities(intent, resolvedType, flags, 0)
-        return chooseBestActivity(intent, resolvedType, flags, query)
+        val newFlags = updateFlagsNought(flags)
+        val query = queryIntentActivities(intent, resolvedType, newFlags, userId)
+        return chooseBestActivity(intent, resolvedType, newFlags, query)
     }
 
     private fun chooseBestActivity(
@@ -477,6 +483,7 @@ class VPackageManagerService : IPackageManager.Stub() {
         var flags = flags
         checkUserId(userId)
         enforceCallingUser(userId)
+        val callingPackageName = VBinder.getCallingPackageName()
 
         flags = updateFlagsNought(flags)
         var comp = intent.component
@@ -488,15 +495,17 @@ class VPackageManagerService : IPackageManager.Stub() {
                 }
             }
         }
+
+        // Return the exact activity when a component is specified.
         if (comp != null) {
-            val list: MutableList<ResolveInfo> = ArrayList(1)
             val ai = getActivityInfo(comp, flags, userId)
-            if (ai != null) {
+            return if (ai != null) {
                 val ri = ResolveInfo()
                 ri.activityInfo = ai
-                list.add(ri)
+                listOf(ri)
+            } else {
+                emptyList()
             }
-            return list
         }
 
         // reader
@@ -515,7 +524,10 @@ class VPackageManagerService : IPackageManager.Stub() {
                     flags,
                     pkg.activities,
                     userId
-                )
+                )?.filter {
+                    // Do not expose non-exported activities
+                    it.activityInfo.exported || it.activityInfo.packageName == callingPackageName
+                }
             }
             return emptyList()
         }
@@ -706,34 +718,37 @@ class VPackageManagerService : IPackageManager.Stub() {
 
     override fun queryContentProviders(
         processName: String?,
-        vuid: Int,
+        uid: Int,
         flags: Int
     ): VParceledListSlice<ProviderInfo?> {
-        var flags = flags
-        val userId = VUserHandle.getUserId(vuid)
+        val userId = VUserHandle.getUserId(uid)
         checkUserId(userId)
         enforceCallingUser(userId)
 
-        flags = updateFlagsNought(flags)
-        val finalList = ArrayList<ProviderInfo?>(3)
-        // reader
+        val callingPackage = VBinder.getCallingPackageName()
+        val newFlags = updateFlagsNought(flags)
+        val providerList = mutableListOf<ProviderInfo>()
+
         synchronized(mPackages) {
             for (p in mProvidersByComponent.values) {
                 val ps = p.owner.mExtras
-                if (processName == null || ps.appId == VUserHandle.getAppId(vuid) && p.info.processName == processName) {
+                if (processName == null || ps.appId == VUserHandle.getAppId(uid) && p.info.processName == processName) {
                     val providerInfo = PackageParserEx.generateProviderInfo(
                         p,
-                        flags,
+                        newFlags,
                         ps.readUserState(userId),
                         userId
                     )
-                    finalList.add(providerInfo)
+                    providerList.add(providerInfo)
                 }
             }
         }
-        if (finalList.isNotEmpty()) {
-            Collections.sort(finalList, sProviderInitOrderSorter)
+        if (providerList.isNotEmpty()) {
+            Collections.sort(providerList, sProviderInitOrderSorter)
         }
+
+        // Do not return non-exported providers
+        val finalList = providerList.filter { it.exported || it.packageName == callingPackage }
         return VParceledListSlice(finalList)
     }
 
@@ -754,6 +769,7 @@ class VPackageManagerService : IPackageManager.Stub() {
         return VParceledListSlice(pkgList)
     }
 
+    // TODO implement package scoping
     override fun getInstalledApplications(
         flags: Int,
         userId: Int
