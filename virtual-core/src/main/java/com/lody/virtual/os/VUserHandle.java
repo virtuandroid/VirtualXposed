@@ -135,10 +135,7 @@ public final class VUserHandle implements Parcelable {
     }
 
     public static boolean accept(int userId) {
-        if (userId == USER_ALL || userId == myUserId()) {
-            return true;
-        }
-        return false;
+        return userId == USER_ALL || userId == myUserId();
     }
 
     /**
@@ -149,12 +146,12 @@ public final class VUserHandle implements Parcelable {
      * @return whether the appId is the same for both uids
      * @hide
      */
-    public static final boolean isSameApp(int uid1, int uid2) {
+    public static boolean isSameApp(int uid1, int uid2) {
         return getAppId(uid1) == getAppId(uid2);
     }
 
     /** @hide */
-    public static final boolean isIsolated(int uid) {
+    public static boolean isIsolated(int uid) {
         if (uid > 0) {
             final int appId = getAppId(uid);
             return appId >= FIRST_ISOLATED_UID && appId <= LAST_ISOLATED_UID;

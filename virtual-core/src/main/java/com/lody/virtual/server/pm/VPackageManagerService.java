@@ -44,9 +44,11 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static android.content.pm.PackageManager.MATCH_DIRECT_BOOT_UNAWARE;
+import static com.lody.virtual.server.security.SecurityUtils.enforceCallingUser;
 
 /**
  * @author Lody
@@ -285,7 +287,7 @@ public class VPackageManagerService extends IPackageManager.Stub {
         return flags;
     }
 
-    private void checkUserId(int userId) {
+    private void checkUserId(int userId) throws SecurityException {
         if (!VUserManagerService.get().exists(userId)) {
             throw new SecurityException("Invalid userId " + userId);
         }
@@ -294,6 +296,7 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public ActivityInfo getActivityInfo(ComponentName component, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
         flags = updateFlagsNought(flags);
         synchronized (mPackages) {
             VPackage p = mPackages.get(component.getPackageName());
@@ -330,6 +333,7 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public ActivityInfo getReceiverInfo(ComponentName component, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
         flags = updateFlagsNought(flags);
         synchronized (mPackages) {
             VPackage p = mPackages.get(component.getPackageName());
@@ -347,8 +351,10 @@ public class VPackageManagerService extends IPackageManager.Stub {
     }
 
     @Override
-    public ServiceInfo getServiceInfo(ComponentName component, int flags, int userId) {
+    public ServiceInfo getServiceInfo(ComponentName component, int flags, int userId) throws SecurityException {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         synchronized (mPackages) {
             VPackage p = mPackages.get(component.getPackageName());
@@ -357,9 +363,15 @@ public class VPackageManagerService extends IPackageManager.Stub {
                 VPackage.ServiceComponent s = mServices.mServices.get(component);
 
                 if (s != null) {
+                    String callingPackage = VBinder.getCallingPackageName();
+
                     LogMessage logMessage = new LogMessage.GetService(component.getPackageName(), component.getClassName(), s.info.exported);
                     LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
                     VLoggingManagerService.get().log(holder);
+
+                    if (!s.info.exported && !Objects.equals(callingPackage, p.packageName)) {
+                        throw new SecurityException("Unable to access non-exported service in " + p.packageName + " from " + callingPackage);
+                    }
 
                     ServiceInfo serviceInfo = PackageParserEx.generateServiceInfo(s, flags, ps.readUserState(userId), userId);
                     ComponentFixer.fixComponentInfo(ps, serviceInfo, userId);
@@ -373,6 +385,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public ProviderInfo getProviderInfo(ComponentName component, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         synchronized (mPackages) {
             VPackage p = mPackages.get(component.getPackageName());
@@ -380,9 +394,15 @@ public class VPackageManagerService extends IPackageManager.Stub {
                 PackageSetting ps = p.mExtras;
                 VPackage.ProviderComponent provider = mProvidersByComponent.get(component);
                 if (provider != null) {
+                    String callingPackage = VBinder.getCallingPackageName();
+
                     LogMessage logMessage = new LogMessage.BindService(provider.owner.packageName, component.getClassName(), provider.info.exported);
                     LogMessageHolder holder = new LogMessageHolder.Builder(logMessage).build();
                     VLoggingManagerService.get().log(holder);
+
+                    if (!provider.info.exported && !Objects.equals(callingPackage, p.packageName)) {
+                        throw new SecurityException("Unable to access non-exported provider in " + p.packageName + " from " + callingPackage);
+                    }
 
                     ProviderInfo providerInfo = PackageParserEx.generateProviderInfo(provider, flags, ps.readUserState(userId), userId);
                     ComponentFixer.fixComponentInfo(ps, providerInfo, userId);
@@ -396,6 +416,7 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public ResolveInfo resolveIntent(Intent intent, String resolvedType, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
         flags = updateFlagsNought(flags);
         List<ResolveInfo> query = queryIntentActivities(intent, resolvedType, flags, 0);
         return chooseBestActivity(intent, resolvedType, flags, query);
@@ -439,6 +460,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public List<ResolveInfo> queryIntentActivities(Intent intent, String resolvedType, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         ComponentName comp = intent.getComponent();
         if (comp == null) {
@@ -477,6 +500,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public List<ResolveInfo> queryIntentReceivers(Intent intent, String resolvedType, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         ComponentName comp = intent.getComponent();
         if (comp == null) {
@@ -515,10 +540,12 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public ResolveInfo resolveService(Intent intent, String resolvedType, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         List<ResolveInfo> query = queryIntentServices(intent, resolvedType, flags, userId);
         if (query != null) {
-            if (query.size() >= 1) {
+            if (!query.isEmpty()) {
                 // If there is more than one service with the same priority,
                 // just arbitrarily pick the first one.
                 return query.get(0);
@@ -530,6 +557,7 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public List<ResolveInfo> queryIntentServices(Intent intent, String resolvedType, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
         flags = updateFlagsNought(flags);
         ComponentName comp = intent.getComponent();
         if (comp == null) {
@@ -541,7 +569,7 @@ public class VPackageManagerService extends IPackageManager.Stub {
             }
         }
         if (comp != null) {
-            final List<ResolveInfo> list = new ArrayList<ResolveInfo>(1);
+            final List<ResolveInfo> list = new ArrayList<>(1);
             final ServiceInfo si = getServiceInfo(comp, flags, userId);
             if (si != null) {
                 final ResolveInfo ri = new ResolveInfo();
@@ -569,6 +597,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public List<ResolveInfo> queryIntentContentProviders(Intent intent, String resolvedType, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         ComponentName comp = intent.getComponent();
         if (comp == null) {
@@ -607,6 +637,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     public VParceledListSlice<ProviderInfo> queryContentProviders(String processName, int vuid, int flags) {
         int userId = VUserHandle.getUserId(vuid);
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         ArrayList<ProviderInfo> finalList = new ArrayList<>(3);
         // reader
@@ -628,6 +660,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public VParceledListSlice<PackageInfo> getInstalledPackages(int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         ArrayList<PackageInfo> pkgList = new ArrayList<>(mPackages.size());
         synchronized (mPackages) {
             for (VPackage p : mPackages.values()) {
@@ -644,6 +678,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public VParceledListSlice<ApplicationInfo> getInstalledApplications(int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         ArrayList<ApplicationInfo> list = new ArrayList<>(mPackages.size());
         synchronized (mPackages) {
@@ -698,8 +734,10 @@ public class VPackageManagerService extends IPackageManager.Stub {
     }
 
     @Override
-    public ProviderInfo resolveContentProvider(String name, int flags, int userId) {
+    public ProviderInfo resolveContentProvider(String name, int flags, int userId) throws SecurityException {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         synchronized (mPackages) {
             final VPackage.ProviderComponent provider = mProvidersByAuthority.get(name);
@@ -709,6 +747,13 @@ public class VPackageManagerService extends IPackageManager.Stub {
                 if (providerInfo != null) {
                     VLoggingClient.get().log(new LogMessage.GetProvider(providerInfo.packageName, provider.getComponentName().getClassName(), providerInfo.exported));
                     VPackage p = mPackages.get(providerInfo.packageName);
+
+                    String callingPackage = VBinder.getCallingPackageName();
+
+                    if (!provider.info.exported && !Objects.equals(callingPackage, providerInfo.packageName)) {
+                        throw new SecurityException("Unable to access non-exported provider in " + providerInfo.packageName + " from " + callingPackage);
+                    }
+
                     PackageSetting settings = p.mExtras;
                     ComponentFixer.fixComponentInfo(settings, providerInfo, userId);
                     return providerInfo;
@@ -721,6 +766,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public ApplicationInfo getApplicationInfo(String packageName, int flags, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         flags = updateFlagsNought(flags);
         synchronized (mPackages) {
             VPackage p = mPackages.get(packageName);
@@ -736,6 +783,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     public String[] getPackagesForUid(int uid) {
         int userId = VUserHandle.getUserId(uid);
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         synchronized (this) {
             List<String> pkgList = new ArrayList<>(2);
             for (VPackage p : mPackages.values()) {
@@ -751,6 +800,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
     @Override
     public int getPackageUid(String packageName, int userId) {
         checkUserId(userId);
+        enforceCallingUser(userId);
+
         synchronized (mPackages) {
             VPackage p = mPackages.get(packageName);
             if (p != null) {
@@ -919,6 +970,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
 
         @Override
         protected ResolveInfo newResult(VPackage.ActivityIntentInfo info, int match, int userId) {
+            enforceCallingUser(userId);
+
             final VPackage.ActivityComponent activity = info.activity;
             PackageSetting ps = activity.owner.mExtras;
             ActivityInfo ai = PackageParserEx.generateActivityInfo(activity, mFlags, ps.readUserState(userId), userId);
@@ -1047,6 +1100,8 @@ public class VPackageManagerService extends IPackageManager.Stub {
 
         @Override
         protected ResolveInfo newResult(VPackage.ServiceIntentInfo filter, int match, int userId) {
+            enforceCallingUser(userId);
+
             final VPackage.ServiceComponent service = filter.service;
             PackageSetting ps = service.owner.mExtras;
             ServiceInfo si = PackageParserEx.generateServiceInfo(service, mFlags, ps.readUserState(userId), userId);

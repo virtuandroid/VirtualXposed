@@ -57,6 +57,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import mirror.com.android.internal.R_Hide;
 
 import static android.accounts.AccountManager.ERROR_CODE_BAD_ARGUMENTS;
+import static com.lody.virtual.server.security.SecurityUtils.enforceCallingUser;
 
 
 /**
@@ -67,6 +68,8 @@ public class VAccountManagerService extends IAccountManager.Stub {
     private static final AtomicReference<VAccountManagerService> sInstance = new AtomicReference<>();
     private static final long CHECK_IN_TIME = 30 * 24 * 60 * 1000L;
     private static final String TAG = VAccountManagerService.class.getSimpleName();
+    // TODO refactor to accounts by UID
+    // TODO remove accounts on app uninstall
     private final SparseArray<List<VAccount>> accountsByUserId = new SparseArray<>();
     private final LinkedList<AuthTokenRecord> authTokenRecords = new LinkedList<>();
     private final LinkedHashMap<String, Session> mSessions = new LinkedHashMap<>();
@@ -109,6 +112,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public AuthenticatorDescription[] getAuthenticatorTypes(int userId) {
+        enforceCallingUser(userId);
         synchronized (cache) {
             AuthenticatorDescription[] descArray = new AuthenticatorDescription[cache.authenticators.size()];
             int i = 0;
@@ -122,6 +126,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public void getAccountsByFeatures(int userId, IAccountManagerResponse response, String type, String[] features) {
+        enforceCallingUser(userId);
         if (response == null) throw new IllegalArgumentException("response is null");
         if (type == null) throw new IllegalArgumentException("accountType is null");
         AuthenticatorInfo info = getAuthenticatorInfo(type);
@@ -151,6 +156,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public final String getPreviousName(int userId, Account account) {
+        enforceCallingUser(userId);
         if (account == null) throw new IllegalArgumentException("account is null");
         synchronized (accountsByUserId) {
             String previousName = null;
@@ -165,12 +171,14 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public Account[] getAccounts(int userId, String type) {
+        enforceCallingUser(userId);
         List<Account> accountList = getAccountList(userId, type);
         return accountList.toArray(new Account[accountList.size()]);
     }
 
 
     private List<Account> getAccountList(int userId, String type) {
+        enforceCallingUser(userId);
         synchronized (accountsByUserId) {
             List<Account> accounts = new ArrayList<>();
             List<VAccount> vAccounts = accountsByUserId.get(userId);
@@ -197,6 +205,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public final void getAuthToken(final int userId, final IAccountManagerResponse response, final Account account, final String authTokenType, final boolean notifyOnAuthFailure, boolean expectActivityLaunch, final Bundle loginOptions) {
+        enforceCallingUser(userId);
         if (response == null) {
             throw new IllegalArgumentException("response is null");
         }
@@ -326,11 +335,13 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public void setPassword(int userId, Account account, String password) {
+        enforceCallingUser(userId);
         if (account == null) throw new IllegalArgumentException("account is null");
         setPasswordInternal(userId, account, password);
     }
 
     private void setPasswordInternal(int userId, Account account, String password) {
+        enforceCallingUser(userId);
         synchronized (accountsByUserId) {
             VAccount vAccount = getAccount(userId, account);
             if (vAccount != null) {
@@ -353,6 +364,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public void setAuthToken(int userId, Account account, String authTokenType, String authToken) {
+        enforceCallingUser(userId);
         if (account == null) throw new IllegalArgumentException("account is null");
         if (authTokenType == null) throw new IllegalArgumentException("authTokenType is null");
         synchronized (accountsByUserId) {
@@ -368,6 +380,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public void setUserData(int userId, Account account, String key, String value) {
+        enforceCallingUser(userId);
         if (key == null) throw new IllegalArgumentException("key is null");
         if (account == null) throw new IllegalArgumentException("account is null");
         VAccount vAccount = getAccount(userId, account);
@@ -383,6 +396,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
     @Override
     public void hasFeatures(int userId, IAccountManagerResponse response,
                             final Account account, final String[] features) {
+        enforceCallingUser(userId);
         if (response == null) throw new IllegalArgumentException("response is null");
         if (account == null) throw new IllegalArgumentException("account is null");
         if (features == null) throw new IllegalArgumentException("features is null");
@@ -435,6 +449,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
     public void updateCredentials(int userId, final IAccountManagerResponse response, final Account account,
                                   final String authTokenType, final boolean expectActivityLaunch,
                                   final Bundle loginOptions) {
+        enforceCallingUser(userId);
         if (response == null) throw new IllegalArgumentException("response is null");
         if (account == null) throw new IllegalArgumentException("account is null");
         if (authTokenType == null) throw new IllegalArgumentException("authTokenType is null");
@@ -468,6 +483,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public String getPassword(int userId, Account account) {
+        enforceCallingUser(userId);
         if (account == null) throw new IllegalArgumentException("account is null");
         synchronized (accountsByUserId) {
             VAccount vAccount = getAccount(userId, account);
@@ -480,6 +496,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public String getUserData(int userId, Account account, String key) {
+        enforceCallingUser(userId);
         if (account == null) throw new IllegalArgumentException("account is null");
         if (key == null) throw new IllegalArgumentException("key is null");
         synchronized (accountsByUserId) {
@@ -494,6 +511,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
     @Override
     public void editProperties(int userId, IAccountManagerResponse response, final String accountType,
                                final boolean expectActivityLaunch) {
+        enforceCallingUser(userId);
         if (response == null) throw new IllegalArgumentException("response is null");
         if (accountType == null) throw new IllegalArgumentException("accountType is null");
         AuthenticatorInfo info = this.getAuthenticatorInfo(accountType);
@@ -526,6 +544,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
     @Override
     public void getAuthTokenLabel(int userId, IAccountManagerResponse response, final String accountType,
                                   final String authTokenType) {
+        enforceCallingUser(userId);
         if (accountType == null) throw new IllegalArgumentException("accountType is null");
         if (authTokenType == null) throw new IllegalArgumentException("authTokenType is null");
         AuthenticatorInfo info = getAuthenticatorInfo(accountType);
@@ -559,6 +578,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
     }
 
     public void confirmCredentials(int userId, IAccountManagerResponse response, final Account account, final Bundle options, final boolean expectActivityLaunch) {
+        enforceCallingUser(userId);
         if (response == null) throw new IllegalArgumentException("response is null");
         if (account == null) throw new IllegalArgumentException("account is null");
         AuthenticatorInfo info = getAuthenticatorInfo(account.type);
@@ -585,6 +605,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
     public void addAccount(int userId, final IAccountManagerResponse response, final String accountType,
                            final String authTokenType, final String[] requiredFeatures,
                            final boolean expectActivityLaunch, final Bundle optionsIn) {
+        enforceCallingUser(userId);
         if (response == null) throw new IllegalArgumentException("response is null");
         if (accountType == null) throw new IllegalArgumentException("accountType is null");
         AuthenticatorInfo info = getAuthenticatorInfo(accountType);
@@ -620,17 +641,20 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public boolean addAccountExplicitly(int userId, Account account, String password, Bundle extras) {
+        enforceCallingUser(userId);
         if (account == null) throw new IllegalArgumentException("account is null");
         return insertAccountIntoDatabase(userId, account, password, extras);
     }
 
     @Override
     public boolean removeAccountExplicitly(int userId, Account account) {
+        enforceCallingUser(userId);
         return account != null && removeAccountInternal(userId, account);
     }
 
     @Override
     public void renameAccount(int userId, IAccountManagerResponse response, Account accountToRename, String newName) {
+        enforceCallingUser(userId);
         if (accountToRename == null) throw new IllegalArgumentException("account is null");
         Account resultingAccount = renameAccountInternal(userId, accountToRename, newName);
         Bundle result = new Bundle();
@@ -646,6 +670,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
     @Override
     public void removeAccount(final int userId, IAccountManagerResponse response, final Account account,
                               boolean expectActivityLaunch) {
+        enforceCallingUser(userId);
         if (response == null) throw new IllegalArgumentException("response is null");
         if (account == null) throw new IllegalArgumentException("account is null");
         AuthenticatorInfo info = this.getAuthenticatorInfo(account.type);
@@ -701,6 +726,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public void clearPassword(int userId, Account account) {
+        enforceCallingUser(userId);
         if (account == null) throw new IllegalArgumentException("account is null");
         setPasswordInternal(userId, account, null);
     }
@@ -727,6 +753,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public boolean accountAuthenticated(int userId, final Account account) {
+        enforceCallingUser(userId);
         if (account == null) {
             throw new IllegalArgumentException("account is null");
         }
@@ -743,6 +770,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public void invalidateAuthToken(int userId, String accountType, String authToken) {
+        enforceCallingUser(userId);
         if (accountType == null) throw new IllegalArgumentException("accountType is null");
         if (authToken == null) throw new IllegalArgumentException("authToken is null");
         synchronized (accountsByUserId) {
@@ -798,6 +826,7 @@ public class VAccountManagerService extends IAccountManager.Stub {
 
     @Override
     public String peekAuthToken(int userId, Account account, String authTokenType) {
+        enforceCallingUser(userId);
         if (account == null) throw new IllegalArgumentException("account is null");
         if (authTokenType == null) throw new IllegalArgumentException("authTokenType is null");
         synchronized (accountsByUserId) {

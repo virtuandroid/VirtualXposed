@@ -154,7 +154,7 @@ public class CustomIconProvider extends DynamicIconProvider {
                         : resId, iconDpi);
             }
         } catch (Throwable ex) {
-            ex.printStackTrace();
+
         }
         return null;
     }

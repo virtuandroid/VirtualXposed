@@ -77,6 +77,9 @@ import timber.log.Timber;
 
 import static android.os.Process.killProcess;
 import static com.lody.virtual.os.VUserHandle.getUserId;
+import static com.lody.virtual.server.security.SecurityUtils.assertPackageMatchesCallingUid;
+import static com.lody.virtual.server.security.SecurityUtils.enforceCallingUser;
+import static com.lody.virtual.server.security.SecurityUtils.enforceNotIsolatedCaller;
 
 /**
  * @author Lody
@@ -136,6 +139,9 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public int startActivity(Intent intent, ActivityInfo info, IBinder resultTo, Bundle options, String resultWho, int requestCode, int userId) {
+        enforceNotIsolatedCaller("startActivity");
+        enforceCallingUser(userId);
+
         synchronized (this) {
             return mMainStack.startActivityLocked(userId, intent, info, resultTo, options, resultWho, requestCode);
         }
@@ -143,6 +149,9 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public int startActivities(Intent[] intents, String[] resolvedTypes, IBinder token, Bundle options, int userId) {
+        enforceNotIsolatedCaller("startActivities");
+        enforceCallingUser(userId);
+
         synchronized (this) {
             ActivityInfo[] infos = new ActivityInfo[intents.length];
             for (int i = 0; i < intents.length; i++) {
@@ -239,6 +248,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public IBinder acquireProviderClient(int userId, ProviderInfo info) {
+        enforceCallingUser(userId);
         ProcessRecord callerApp;
         synchronized (mPidsSelfLocked) {
             callerApp = findProcessLocked(VBinder.getCallingPid());
@@ -314,6 +324,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public ComponentName startService(IBinder caller, Intent service, String resolvedType, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             return startServiceCommon(service, true, userId);
         }
@@ -364,6 +375,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public int stopService(IBinder caller, Intent service, String resolvedType, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ServiceInfo serviceInfo = resolveServiceInfo(service, userId);
             if (serviceInfo == null) {
@@ -380,6 +392,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public boolean stopServiceToken(ComponentName className, IBinder token, int startId, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ServiceRecord r = (ServiceRecord) token;
             if (r != null && (r.startId == startId || startId == -1)) {
@@ -424,6 +437,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
     @Override
     public int bindService(IBinder caller, IBinder token, Intent service, String resolvedType,
                            IServiceConnection connection, int flags, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ServiceInfo serviceInfo = resolveServiceInfo(service, userId);
             if (serviceInfo == null) {
@@ -473,6 +487,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public boolean unbindService(IServiceConnection connection, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ServiceRecord r = findRecordLocked(connection);
             if (r == null) {
@@ -507,6 +522,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public void unbindFinished(IBinder token, Intent service, boolean doRebind, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ServiceRecord r = (ServiceRecord) token;
             if (r != null) {
@@ -527,6 +543,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public void serviceDoneExecuting(IBinder token, int type, int startId, int res, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ServiceRecord r = (ServiceRecord) token;
             if (r == null) {
@@ -540,6 +557,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public IBinder peekService(Intent service, String resolvedType, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ServiceInfo serviceInfo = resolveServiceInfo(service, userId);
             if (serviceInfo == null) {
@@ -558,6 +576,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public void publishService(IBinder token, Intent intent, IBinder service, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ServiceRecord r = (ServiceRecord) token;
             if (r != null) {
@@ -588,6 +607,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public VParceledListSlice<ActivityManager.RunningServiceInfo> getServices(int maxNum, int flags, int userId) {
+        enforceCallingUser(userId);
         synchronized (mHistory) {
             List<ActivityManager.RunningServiceInfo> services = new ArrayList<>(mHistory.size());
             for (ServiceRecord r : mHistory) {
@@ -616,6 +636,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
     @Override
     public void setServiceForeground(ComponentName className, IBinder token, int id, Notification notification,
                                      boolean removeNotification, int userId) {
+        enforceCallingUser(userId);
         ServiceRecord r = (ServiceRecord) token;
         if (r != null) {
             if (id != 0) {
@@ -660,6 +681,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public void processRestarted(String packageName, String processName, int userId) {
+        enforceCallingUser(userId);
         int callingPid = getCallingPid();
         int appId = VAppManagerService.get().getAppId(packageName);
         int uid = VUserHandle.getUid(userId, appId);
@@ -773,6 +795,7 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public int initProcess(String packageName, String processName, int userId) {
+        enforceCallingUser(userId);
         synchronized (this) {
             ProcessRecord r = startProcessIfNeedLocked(processName, userId, packageName);
             return r != null ? r.vpid : -1;
@@ -912,6 +935,9 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public void killAppByPkg(final String pkg, int userId) {
+        enforceCallingUser(userId);
+        assertPackageMatchesCallingUid(pkg);
+
         synchronized (mProcessNames) {
             ArrayMap<String, SparseArray<ProcessRecord>> map = mProcessNames.getMap();
             int N = map.size();
@@ -934,6 +960,9 @@ public class VActivityManagerService extends IActivityManager.Stub {
 
     @Override
     public boolean isAppRunning(String packageName, int userId) {
+        enforceCallingUser(userId);
+        assertPackageMatchesCallingUid(packageName);
+
         boolean running = false;
         synchronized (mPidsSelfLocked) {
             int N = mPidsSelfLocked.size();

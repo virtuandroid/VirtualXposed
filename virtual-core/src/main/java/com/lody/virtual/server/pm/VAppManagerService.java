@@ -1,5 +1,11 @@
 package com.lody.virtual.server.pm;
 
+import static com.lody.virtual.server.security.SecurityUtils.assertPackageMatchesCallingUid;
+import static com.lody.virtual.server.security.SecurityUtils.assertSystemCaller;
+import static com.lody.virtual.server.security.SecurityUtils.enforceCallingPackage;
+import static com.lody.virtual.server.security.SecurityUtils.enforceCallingPermission;
+import static com.lody.virtual.server.security.SecurityUtils.enforceCallingUser;
+
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -145,6 +151,7 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public InstallResult installPackage(String path, int flags) {
+        // TODO Permission check
         return installPackage(path, flags, true);
     }
 
@@ -296,6 +303,8 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public synchronized boolean installPackageAsUser(int userId, String packageName) {
+        enforceCallingUser(userId);
+        // TODO implement install package permissions
         PackageSetting ps = PackageCacheManager.getSetting(packageName);
         if (!VUserManagerService.get().exists(userId) || ps == null || ps.isInstalled(userId)) {
             return false;
@@ -367,6 +376,7 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public synchronized boolean uninstallPackage(String packageName) {
+        assertPackageMatchesCallingUid(packageName);
         PackageSetting ps = PackageCacheManager.getSetting(packageName);
         if (ps != null) {
             uninstallPackageFully(ps);
@@ -378,6 +388,8 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public boolean clearPackageAsUser(int userId, String packageName) throws RemoteException {
+        enforceCallingUser(userId);
+        assertPackageMatchesCallingUid(packageName);
         if (!VUserManagerService.get().exists(userId)) {
             return false;
         }
@@ -404,6 +416,12 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public boolean clearPackage(String packageName) throws RemoteException {
+        if (getPackageInstalledUsers(packageName).length > 1) {
+            // Only system can clear multiple packages
+            assertSystemCaller();
+        } else {
+            assertPackageMatchesCallingUid(packageName);
+        }
         try {
             BroadcastSystem.get().stopApp(packageName);
             VActivityManagerService.get().killAppByPkg(packageName, VUserHandle.USER_ALL);
@@ -420,6 +438,8 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public synchronized boolean uninstallPackageAsUser(String packageName, int userId) {
+        enforceCallingUser(userId);
+        assertPackageMatchesCallingUid(packageName);
         if (!VUserManagerService.get().exists(userId)) {
             return false;
         }
@@ -485,6 +505,7 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public List<InstalledAppInfo> getInstalledApps(int flags) {
+        // TODO implement scoping
         List<InstalledAppInfo> infoList = new ArrayList<>(getInstalledAppCount());
         for (VPackage p : PackageCacheManager.PACKAGE_CACHE.values()) {
             PackageSetting setting = (PackageSetting) p.mExtras;
@@ -495,6 +516,7 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public List<InstalledAppInfo> getInstalledAppsAsUser(int userId, int flags) {
+        enforceCallingUser(userId);
         List<InstalledAppInfo> infoList = new ArrayList<>(getInstalledAppCount());
         for (VPackage p : PackageCacheManager.PACKAGE_CACHE.values()) {
             PackageSetting setting = (PackageSetting) p.mExtras;
@@ -521,6 +543,7 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public boolean isAppInstalledAsUser(int userId, String packageName) {
+        enforceCallingUser(userId);
         if (packageName == null || !VUserManagerService.get().exists(userId)) {
             return false;
         }
@@ -589,6 +612,7 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public void registerObserver(IPackageObserver observer) {
+        assertSystemCaller();
         try {
             mRemoteCallbackList.register(observer);
         } catch (Throwable e) {
@@ -598,6 +622,7 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public void unregisterObserver(IPackageObserver observer) {
+        assertSystemCaller();
         try {
             mRemoteCallbackList.unregister(observer);
         } catch (Throwable e) {
@@ -607,11 +632,13 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public IAppRequestListener getAppRequestListener() {
+        assertSystemCaller();
         return mAppRequestListener;
     }
 
     @Override
     public void setAppRequestListener(final IAppRequestListener listener) {
+        assertSystemCaller();
         this.mAppRequestListener = listener;
         if (listener != null) {
             try {
@@ -630,6 +657,7 @@ public class VAppManagerService extends IAppManager.Stub {
 
     @Override
     public void clearAppRequestListener() {
+        assertSystemCaller();
         this.mAppRequestListener = null;
     }
 
@@ -651,7 +679,10 @@ public class VAppManagerService extends IAppManager.Stub {
         return ps != null && ps.isLaunched(userId);
     }
 
+    @Override
     public void setPackageHidden(int userId, String packageName, boolean hidden) {
+        enforceCallingUser(userId);
+        assertPackageMatchesCallingUid(packageName);
         PackageSetting ps = PackageCacheManager.getSetting(packageName);
         if (ps != null && VUserManagerService.get().exists(userId)) {
             ps.setHidden(userId, hidden);
