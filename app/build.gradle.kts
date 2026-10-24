@@ -90,10 +90,6 @@ dependencies {
     // ThirdParty
     implementation("com.jonathanfinerty.once:once:1.3.1")
 
-    implementation("com.github.AlexLiuSheng:CheckVersionLib:2.2.1") {
-        exclude(group = "androidx.appcompat")
-    }
-
     // Glide
     implementation("com.github.bumptech.glide:glide:4.16.0")
     annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")

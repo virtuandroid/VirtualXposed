@@ -22,8 +22,6 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
 import android.widget.Toast;
 
 import com.android.launcher3.LauncherFiles;
@@ -39,14 +37,12 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.virtualapp.R;
 import io.virtualapp.abs.ui.VUiKit;
 import io.virtualapp.settings.AdvancedSettingsActivity;
 import io.virtualapp.settings.SettingsActivity;
-import io.virtualapp.update.VAVersionService;
 import jonathanfinerty.once.Once;
 
 import static io.virtualapp.XApp.XPOSED_INSTALLER_PACKAGE;
@@ -204,9 +200,6 @@ public class NewHomeActivity extends NexusLauncherActivity {
         if (checkXposedInstaller.compareAndSet(true, false)) {
             installXposed();
         }
-        // check for update
-        new Handler().postDelayed(() ->
-                VAVersionService.checkUpdate(getApplicationContext(), false), 1000);
 
         // check for wallpaper
         setWallpaper();
