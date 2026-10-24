@@ -1,79 +1,52 @@
-package com.lody.virtual.server.am;
+package com.lody.virtual.server.am
 
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.pm.ActivityInfo;
-import android.os.Build;
-import android.os.Handler;
-import android.os.IBinder;
-import android.os.Message;
-
-import com.lody.virtual.client.core.VirtualCore;
-import com.lody.virtual.client.env.SpecialComponentList;
-import com.lody.virtual.helper.collection.ArrayMap;
-import com.lody.virtual.helper.utils.VLog;
-import com.lody.virtual.remote.PendingResultData;
-import com.lody.virtual.server.pm.PackageSetting;
-import com.lody.virtual.server.pm.VAppManagerService;
-import com.lody.virtual.server.pm.parser.VPackage;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
-import mirror.android.app.ContextImpl;
-import mirror.android.app.LoadedApkHuaWei;
-import mirror.android.rms.resource.ReceiverResourceLP;
-import mirror.android.rms.resource.ReceiverResourceM;
-import mirror.android.rms.resource.ReceiverResourceN;
-
-import static android.content.Intent.FLAG_RECEIVER_REGISTERED_ONLY;
+import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.ActivityInfo
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Message
+import android.os.Process
+import androidx.core.content.ContextCompat
+import com.lody.virtual.client.core.VirtualCore
+import com.lody.virtual.client.env.SpecialComponentList
+import com.lody.virtual.helper.collection.ArrayMap
+import com.lody.virtual.helper.utils.VLog
+import com.lody.virtual.os.VBinder
+import com.lody.virtual.remote.PendingResultData
+import com.lody.virtual.server.pm.PackageSetting
+import com.lody.virtual.server.pm.VAppManagerService
+import com.lody.virtual.server.pm.parser.VPackage
+import mirror.android.app.ContextImpl
+import mirror.android.app.LoadedApkHuaWei
+import mirror.android.rms.resource.ReceiverResourceLP
+import mirror.android.rms.resource.ReceiverResourceM
+import mirror.android.rms.resource.ReceiverResourceN
+import java.util.Collections
+import java.util.LinkedList
 
 /**
  * @author Lody
  */
+class BroadcastSystem private constructor(
+    private val mContext: Context,
+    private val mAMS: VActivityManagerService,
+    private val mApp: VAppManagerService
+) {
+    private val mReceivers = ArrayMap<String?, MutableList<BroadcastReceiver?>?>()
+    private val mBroadcastRecords: MutableMap<IBinder?, BroadcastRecord?> =
+        HashMap()
+    private val mScheduler: StaticScheduler
+    private val mTimeoutHandler: TimeoutHandler
 
-public class BroadcastSystem {
-
-    private static final String TAG = BroadcastSystem.class.getSimpleName();
-    /**
-     * MUST < 10000.
-     */
-    private static final int BROADCAST_TIME_OUT = 8500;
-    private static BroadcastSystem gDefault;
-
-    private final ArrayMap<String, List<BroadcastReceiver>> mReceivers = new ArrayMap<>();
-    private final Map<IBinder, BroadcastRecord> mBroadcastRecords = new HashMap<>();
-    private final Context mContext;
-    private final StaticScheduler mScheduler;
-    private final TimeoutHandler mTimeoutHandler;
-    private final VActivityManagerService mAMS;
-    private final VAppManagerService mApp;
-
-    private BroadcastSystem(Context context, VActivityManagerService ams, VAppManagerService app) {
-        this.mContext = context;
-        this.mApp = app;
-        this.mAMS = ams;
-        mScheduler = new StaticScheduler();
-        mTimeoutHandler = new TimeoutHandler();
-        fuckHuaWeiVerifier();
-    }
-
-    public static void attach(VActivityManagerService ams, VAppManagerService app) {
-        if (gDefault != null) {
-            throw new IllegalStateException();
-        }
-        gDefault = new BroadcastSystem(VirtualCore.get().getContext(), ams, app);
-    }
-
-    public static BroadcastSystem get() {
-        return gDefault;
+    init {
+        mScheduler = StaticScheduler()
+        mTimeoutHandler = TimeoutHandler()
+        fuckHuaWeiVerifier()
     }
 
     /**
@@ -89,36 +62,37 @@ public class BroadcastSystem {
      * at com.lody.virtual.server.pm.VAppManagerService.systemReady(VAppManagerService.java:70)
      * at com.lody.virtual.server.BinderProvider.onCreate(BinderProvider.java:42)
      */
-    private void fuckHuaWeiVerifier() {
-
+    private fun fuckHuaWeiVerifier() {
         if (LoadedApkHuaWei.mReceiverResource != null) {
-            Object packageInfo = ContextImpl.mPackageInfo.get(mContext);
+            val packageInfo = ContextImpl.mPackageInfo.get(mContext)
             if (packageInfo != null) {
-                Object receiverResource = LoadedApkHuaWei.mReceiverResource.get(packageInfo);
+                val receiverResource = LoadedApkHuaWei.mReceiverResource.get(packageInfo)
                 if (receiverResource != null) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         if (ReceiverResourceN.mWhiteList != null) {
-                            List<String> whiteList = ReceiverResourceN.mWhiteList.get(receiverResource);
-                            List<String> newWhiteList = new ArrayList<>();
+                            val whiteList = ReceiverResourceN.mWhiteList.get(receiverResource)
+                            val newWhiteList: MutableList<String?> = ArrayList()
                             // Add our package name to the white list.
-                            newWhiteList.add(mContext.getPackageName());
+                            newWhiteList.add(mContext.packageName)
                             if (whiteList != null) {
-                                newWhiteList.addAll(whiteList);
+                                newWhiteList.addAll(whiteList)
                             }
-                            ReceiverResourceN.mWhiteList.set(receiverResource, newWhiteList);
+                            ReceiverResourceN.mWhiteList.set(receiverResource, newWhiteList)
                         }
-
                     } else {
                         if (ReceiverResourceM.mWhiteList != null) {
-                            String[] whiteList = ReceiverResourceM.mWhiteList.get(receiverResource);
-                            List<String> newWhiteList = new LinkedList<>();
-                            Collections.addAll(newWhiteList, whiteList);
+                            val whiteList = ReceiverResourceM.mWhiteList.get(receiverResource)
+                            val newWhiteList: MutableList<String?> = LinkedList()
+                            Collections.addAll<String?>(newWhiteList, *whiteList)
                             // Add our package name to the white list.
-                            newWhiteList.add(mContext.getPackageName());
-                            ReceiverResourceM.mWhiteList.set(receiverResource, newWhiteList.toArray(new String[newWhiteList.size()]));
+                            newWhiteList.add(mContext.packageName)
+                            ReceiverResourceM.mWhiteList.set(
+                                receiverResource,
+                                newWhiteList.toTypedArray<String?>()
+                            )
                         } else if (ReceiverResourceLP.mResourceConfig != null) {
                             // Just clear the ResourceConfig.
-                            ReceiverResourceLP.mResourceConfig.set(receiverResource, null);
+                            ReceiverResourceLP.mResourceConfig.set(receiverResource, null)
                         }
                     }
                 }
@@ -126,133 +100,153 @@ public class BroadcastSystem {
         }
     }
 
-    public void startApp(VPackage p) {
-        PackageSetting setting = (PackageSetting) p.mExtras;
-        for (VPackage.ActivityComponent receiver : p.receivers) {
-            ActivityInfo info = receiver.info;
-            List<BroadcastReceiver> receivers = mReceivers.get(p.packageName);
+    @SuppressLint("WrongConstant")
+    fun startApp(p: VPackage) {
+        val setting = p.mExtras as PackageSetting
+        for (receiver in p.receivers) {
+            val info = receiver.info
+            var receivers = mReceivers[p.packageName]
             if (receivers == null) {
-                receivers = new ArrayList<>();
-                mReceivers.put(p.packageName, receivers);
+                receivers = ArrayList()
+                mReceivers[p.packageName] = receivers
             }
-            String componentAction = String.format("_VA_%s_%s", info.packageName, info.name);
-            IntentFilter componentFilter = new IntentFilter(componentAction);
-            BroadcastReceiver r = new StaticBroadcastReceiver(setting.appId, info, componentFilter);
+            val componentAction = String.format("_VA_%s_%s", info.packageName, info.name)
+            val componentFilter = IntentFilter(componentAction)
+            val r: BroadcastReceiver = StaticBroadcastReceiver(setting.appId, info, componentFilter)
             // TODO Change permanent RECEIVER_EXPORTED to info.exported
-            mContext.registerReceiver(r, componentFilter, null, mScheduler, Context.RECEIVER_EXPORTED);
-            receivers.add(r);
-            for (VPackage.ActivityIntentInfo ci : receiver.intents) {
-                IntentFilter cloneFilter = new IntentFilter(ci.filter);
-                SpecialComponentList.protectIntentFilter(cloneFilter);
-                r = new StaticBroadcastReceiver(setting.appId, info, cloneFilter);
-                mContext.registerReceiver(r, cloneFilter, null, mScheduler, Context.RECEIVER_EXPORTED);
-                receivers.add(r);
+            ContextCompat.registerReceiver(
+                mContext,
+                r,
+                componentFilter,
+                null,
+                mScheduler,
+                ContextCompat.RECEIVER_EXPORTED
+            )
+            receivers.add(r)
+            for (ci in receiver.intents) {
+                val cloneFilter = IntentFilter(ci.filter)
+                SpecialComponentList.protectIntentFilter(cloneFilter)
+                val r = StaticBroadcastReceiver(setting.appId, info, cloneFilter)
+                ContextCompat.registerReceiver(
+                    mContext,
+                    r,
+                    cloneFilter,
+                    null,
+                    mScheduler,
+                    ContextCompat.RECEIVER_EXPORTED
+                )
+                receivers.add(r)
             }
         }
     }
 
 
-    public void stopApp(String packageName) {
-        synchronized (mBroadcastRecords) {
-            Iterator<Map.Entry<IBinder, BroadcastRecord>> iterator = mBroadcastRecords.entrySet().iterator();
+    fun stopApp(packageName: String?) {
+        synchronized(mBroadcastRecords) {
+            val iterator = mBroadcastRecords.entries.iterator()
             while (iterator.hasNext()) {
-                Map.Entry<IBinder, BroadcastRecord> entry = iterator.next();
-                BroadcastRecord record = entry.getValue();
-                if (record.receiverInfo.packageName.equals(packageName)) {
-                    record.pendingResult.finish();
-                    iterator.remove();
+                val entry = iterator.next()
+                val record = entry.value
+                if (record?.receiverInfo?.packageName == packageName) {
+                    record?.pendingResult?.finish()
+                    iterator.remove()
                 }
             }
         }
-        synchronized (mReceivers) {
-            List<BroadcastReceiver> receivers = mReceivers.get(packageName);
+        synchronized(mReceivers) {
+            val receivers = mReceivers[packageName]
             if (receivers != null) {
-                for (BroadcastReceiver r : receivers) {
-                    mContext.unregisterReceiver(r);
+                for (r in receivers) {
+                    mContext.unregisterReceiver(r)
                 }
             }
-            mReceivers.remove(packageName);
+            mReceivers.remove(packageName)
         }
     }
 
-    void broadcastFinish(PendingResultData res) {
-        synchronized (mBroadcastRecords) {
-            BroadcastRecord record = mBroadcastRecords.remove(res.mToken);
+    fun broadcastFinish(res: PendingResultData) {
+        synchronized(mBroadcastRecords) {
+            val record = mBroadcastRecords.remove(res.mToken)
             if (record == null) {
-                VLog.e(TAG, "Unable to find the BroadcastRecord by token: " + res.mToken);
+                VLog.e(TAG, "Unable to find the BroadcastRecord by token: " + res.mToken)
             }
         }
-        mTimeoutHandler.removeMessages(0, res.mToken);
-        res.finish();
+        mTimeoutHandler.removeMessages(0, res.mToken)
+        res.finish()
     }
 
-    void broadcastSent(int vuid, ActivityInfo receiverInfo, PendingResultData res) {
-        BroadcastRecord record = new BroadcastRecord(vuid, receiverInfo, res);
-        synchronized (mBroadcastRecords) {
-            mBroadcastRecords.put(res.mToken, record);
+    fun broadcastSent(vuid: Int, receiverInfo: ActivityInfo, res: PendingResultData?) {
+        val record = BroadcastRecord(vuid, receiverInfo, res)
+        synchronized(mBroadcastRecords) {
+            mBroadcastRecords.put(res?.mToken, record)
         }
-        Message msg = new Message();
-        msg.obj = res.mToken;
-        mTimeoutHandler.sendMessageDelayed(msg, BROADCAST_TIME_OUT);
+        val msg = Message()
+        msg.obj = res?.mToken
+        mTimeoutHandler.sendMessageDelayed(msg, BROADCAST_TIME_OUT.toLong())
     }
 
-    private static final class StaticScheduler extends Handler {
+    private class StaticScheduler : Handler()
 
-    }
+    private class BroadcastRecord(
+        var vuid: Int,
+        var receiverInfo: ActivityInfo,
+        var pendingResult: PendingResultData?
+    )
 
-    private static final class BroadcastRecord {
-        int vuid;
-        ActivityInfo receiverInfo;
-        PendingResultData pendingResult;
-
-        BroadcastRecord(int vuid, ActivityInfo receiverInfo, PendingResultData pendingResult) {
-            this.vuid = vuid;
-            this.receiverInfo = receiverInfo;
-            this.pendingResult = pendingResult;
-        }
-    }
-
-    private final class TimeoutHandler extends Handler {
-        @Override
-        public void handleMessage(Message msg) {
-            IBinder token = (IBinder) msg.obj;
-            BroadcastRecord r = mBroadcastRecords.remove(token);
+    private inner class TimeoutHandler : Handler() {
+        override fun handleMessage(msg: Message) {
+            val token = msg.obj as IBinder?
+            val r = mBroadcastRecords.remove(token)
             if (r != null) {
-                VLog.w(TAG, "Broadcast timeout, cancel to dispatch it.");
-                r.pendingResult.finish();
+                VLog.w(TAG, "Broadcast timeout, cancel to dispatch it.")
+                r.pendingResult?.finish()
             }
         }
     }
 
 
-    private final class StaticBroadcastReceiver extends BroadcastReceiver {
-        private int appId;
-        private ActivityInfo info;
-        @SuppressWarnings("unused")
-        private IntentFilter filter;
+    private inner class StaticBroadcastReceiver(
+        private val appId: Int, private val info: ActivityInfo, private val filter: IntentFilter?
+    ) : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+            // Disallow apps from outside VirtualXposed from sending broadcasts
+            if (VBinder.getCallingPid() != Process.myPid()) {
+                return
+            }
+            if (mApp.isBooting) {
+                return
+            }
+            if ((intent.flags and Intent.FLAG_RECEIVER_REGISTERED_ONLY) != 0 || isInitialStickyBroadcast) {
+                return
+            }
+            val privilegePkg = intent.getStringExtra("_VA_|_privilege_pkg_")
+            if (privilegePkg != null && info.packageName != privilegePkg) {
+                return
+            }
+            val result = goAsync()
+            if (!mAMS.handleStaticBroadcast(appId, info, intent, PendingResultData(result))) {
+                result.finish()
+            }
+        }
+    }
 
-        private StaticBroadcastReceiver(int appId, ActivityInfo info, IntentFilter filter) {
-            this.appId = appId;
-            this.info = info;
-            this.filter = filter;
+    companion object {
+        private val TAG: String = BroadcastSystem::class.java.getSimpleName()
+
+        /**
+         * MUST < 10000.
+         */
+        private const val BROADCAST_TIME_OUT = 8500
+        @SuppressLint("StaticFieldLeak")
+        private lateinit var gDefault: BroadcastSystem
+
+        @JvmStatic
+        fun attach(ams: VActivityManagerService, app: VAppManagerService) {
+            gDefault = BroadcastSystem(VirtualCore.get().context.applicationContext, ams, app)
         }
 
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (mApp.isBooting()) {
-                return;
-            }
-            if ((intent.getFlags() & FLAG_RECEIVER_REGISTERED_ONLY) != 0 || isInitialStickyBroadcast()) {
-                return;
-            }
-            String privilegePkg = intent.getStringExtra("_VA_|_privilege_pkg_");
-            if (privilegePkg != null && !info.packageName.equals(privilegePkg)) {
-                return;
-            }
-            PendingResult result = goAsync();
-            if (!mAMS.handleStaticBroadcast(appId, info, intent, new PendingResultData(result))) {
-                result.finish();
-            }
+        fun get(): BroadcastSystem {
+            return gDefault
         }
     }
 }

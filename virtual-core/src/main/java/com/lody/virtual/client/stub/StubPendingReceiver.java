@@ -19,9 +19,7 @@ public class StubPendingReceiver extends BroadcastReceiver {
         int userId = intent.getIntExtra("_VA_|_user_id_", VUserHandle.USER_ALL);
         if (realIntent != null) {
             Intent newIntent = ComponentUtils.redirectBroadcastIntent(realIntent, userId);
-            if (newIntent != null) {
-                context.sendBroadcast(newIntent);
-            }
+            context.sendBroadcast(newIntent);
         }
     }
 }

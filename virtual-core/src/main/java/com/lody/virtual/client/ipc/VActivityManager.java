@@ -467,9 +467,7 @@ public class VActivityManager {
 
     public void sendBroadcast(Intent intent, int userId) {
         Intent newIntent = ComponentUtils.redirectBroadcastIntent(intent, userId);
-        if (newIntent != null) {
-            VirtualCore.get().getContext().sendBroadcast(newIntent);
-        }
+        VirtualCore.get().getContext().sendBroadcast(newIntent);
     }
 
     public int broadcastIntentWithFeature(IApplicationThread caller, String callingFeatureId, Intent intent, String resolvedType, IIntentReceiver resultTo, int resultCode, String resultData, Bundle map, String[] requiredPermissions, String[] excludePermissions, String[] excludePackages, int appOp, Bundle options, boolean serialized, boolean sticky, int userId) throws RemoteException {
