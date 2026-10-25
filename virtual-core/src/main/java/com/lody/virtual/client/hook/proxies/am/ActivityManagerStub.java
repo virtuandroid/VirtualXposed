@@ -1,9 +1,13 @@
 package com.lody.virtual.client.hook.proxies.am;
 
 import android.app.ActivityManager;
+import android.app.IApplicationThread;
 import android.content.Context;
+import android.content.IIntentReceiver;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IInterface;
 
 import com.lody.virtual.client.core.VirtualCore;
@@ -214,43 +218,43 @@ public class ActivityManagerStub extends MethodInvocationProxy<MethodInvocationS
 
         @Override
         public Object call(Object who, Method method, Object[] args) throws Throwable {
-//            if (args.length == 16) {
-//                IApplicationThread caller = (IApplicationThread) args[0];
-//                String callingFeatureId = (String) args[1];
-//                Intent intent = (Intent) args[2];
-//                String resolvedType = (String) args[3];
-//                IIntentReceiver resultTo = (IIntentReceiver) args[4];
-//                int resultCode = (int) args[5];
-//                String resultData = (String) args[6];
-//                Bundle map = (Bundle) args[7];
-//                String[] requiredPermissions = (String[]) args[8];
-//                String[] excludePermissions = (String[]) args[9];
-//                String[] excludePackages = (String[]) args[10];
-//                int appOp = (int) args[11];
-//                Bundle options = (Bundle) args[12];
-//                boolean serialized = (boolean) args[13];
-//                boolean sticky = (boolean) args[14];
-//                int userId = (int) args[15];
-//
-//                return VActivityManager.get().broadcastIntentWithFeature(
-//                        caller,
-//                        callingFeatureId,
-//                        intent,
-//                        resolvedType,
-//                        resultTo,
-//                        resultCode,
-//                        resultData,
-//                        map,
-//                        requiredPermissions,
-//                        excludePermissions,
-//                        excludePackages,
-//                        appOp,
-//                        options,
-//                        serialized,
-//                        sticky,
-//                        userId
-//                );
-//            }
+            if (args.length == 16) {
+                IApplicationThread caller = (IApplicationThread) args[0];
+                String callingFeatureId = (String) args[1];
+                Intent intent = (Intent) args[2];
+                String resolvedType = (String) args[3];
+                IIntentReceiver resultTo = (IIntentReceiver) args[4];
+                int resultCode = (int) args[5];
+                String resultData = (String) args[6];
+                Bundle map = (Bundle) args[7];
+                String[] requiredPermissions = (String[]) args[8];
+                String[] excludePermissions = (String[]) args[9];
+                String[] excludePackages = (String[]) args[10];
+                int appOp = (int) args[11];
+                Bundle options = (Bundle) args[12];
+                boolean serialized = (boolean) args[13];
+                boolean sticky = (boolean) args[14];
+                int userId = (int) args[15];
+
+                return VActivityManager.get().broadcastIntentWithFeature(
+                        caller,
+                        callingFeatureId,
+                        intent,
+                        resolvedType,
+                        resultTo,
+                        resultCode,
+                        resultData,
+                        map,
+                        requiredPermissions,
+                        excludePermissions,
+                        excludePackages,
+                        appOp,
+                        options,
+                        serialized,
+                        sticky,
+                        userId
+                );
+            }
 
             return super.call(who, method, args);
         }

@@ -37,7 +37,7 @@ class BroadcastSystem private constructor(
     private val mAMS: VActivityManagerService,
     private val mApp: VAppManagerService
 ) {
-    private val mReceivers = ArrayMap<String?, MutableList<BroadcastReceiver?>?>()
+    private val mReceivers = ArrayMap<String, MutableList<BroadcastReceiver>>()
     private val mBroadcastRecords: MutableMap<IBinder?, BroadcastRecord?> =
         HashMap()
     private val mScheduler: StaticScheduler
@@ -213,7 +213,14 @@ class BroadcastSystem private constructor(
             if (VBinder.getCallingPid() != Process.myPid()) {
                 return
             }
-            // TODO MAKE A PENDINGINTENT AUTH SYSTEM
+            // This cannot be spoofed since the caller is trusted.
+            val callingPackage = intent.getStringExtra("_VA_|_pkg_name_safe_")
+            // Disallow private receivers
+            if (callingPackage != info.packageName && !info.exported) {
+                // TODO add permission checks
+                // TODO add stricter user ID tests
+                return
+            }
             if (mApp.isBooting) {
                 return
             }
@@ -238,6 +245,7 @@ class BroadcastSystem private constructor(
          * MUST < 10000.
          */
         private const val BROADCAST_TIME_OUT = 8500
+
         @SuppressLint("StaticFieldLeak")
         private lateinit var gDefault: BroadcastSystem
 

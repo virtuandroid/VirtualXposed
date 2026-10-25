@@ -14,7 +14,6 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.ProviderInfo
 import android.content.pm.ServiceInfo
@@ -903,6 +902,8 @@ class VActivityManagerService : IActivityManager.Stub() {
                 return r.vuid
             }
         }
+        // If the PID cannot be found its assumed to be from the engine process or the main process
+        // TODO this should be a more rigorous check
         return Process.myUid()
     }
 
@@ -972,14 +973,14 @@ class VActivityManagerService : IActivityManager.Stub() {
         return null
     }
 
-    override fun getProcessPkgList(pid: Int): MutableList<String?> {
+    override fun getProcessPkgList(pid: Int): List<String?> {
         synchronized(mPidsSelfLocked) {
             val r = mPidsSelfLocked.get(pid)
             if (r != null) {
                 return ArrayList(r.pkgList)
             }
         }
-        return mutableListOf()
+        return listOf()
     }
 
     override fun killAllApps() {
@@ -1283,9 +1284,10 @@ class VActivityManagerService : IActivityManager.Stub() {
     ): Int {
         // Android 11+ uses broadcastIntentWithFeature internally instead of sendBroadcast
         SpecialComponentList.protectIntent(intent)
-
+        enforceCallingUser(userId)
+        val caller = VBinder.getCallingPackageName()
         val context = VirtualCore.get().context
-        intent.putExtra("_VA_|_user_id_", userId)
+        intent.putExtra("_VA_|_pkg_name_safe_", caller)
         context.sendBroadcast(intent)
         return 0
     }
