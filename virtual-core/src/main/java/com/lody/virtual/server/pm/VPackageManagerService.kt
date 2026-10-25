@@ -494,6 +494,7 @@ class VPackageManagerService : IPackageManager.Stub() {
                     userId
                 )
             }
+            // TODO Missing permission checks
             return list?.filter {
                 val info = it.activityInfo ?: it.serviceInfo ?: it.providerInfo
                 info.exported || info.packageName == callingPackage

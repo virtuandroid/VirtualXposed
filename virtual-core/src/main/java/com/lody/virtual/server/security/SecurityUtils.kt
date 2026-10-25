@@ -71,6 +71,13 @@ object SecurityUtils {
         throw SecurityException(msg)
     }
 
+    @JvmStatic
+    @Throws(SecurityException::class)
+    fun enforceCallingUid(uid: Int) {
+        if (VBinder.getCallingUid() != uid && uid != VActivityManager.get().systemPid) {
+            throw SecurityException("Forbidden calling UID.")
+        }
+    }
 
     @JvmStatic
     @Throws(SecurityException::class)

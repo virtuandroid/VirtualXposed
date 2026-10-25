@@ -83,7 +83,6 @@ final class ProviderIntentResolver extends IntentResolver<VPackage.ProviderInten
         }
     }
 
-    @TargetApi(Build.VERSION_CODES.KITKAT)
     @Override
     protected boolean allowFilterResult(VPackage.ProviderIntentInfo filter, List<ResolveInfo> dest) {
         ProviderInfo filterPi = filter.provider.info;
@@ -112,7 +111,6 @@ final class ProviderIntentResolver extends IntentResolver<VPackage.ProviderInten
         return packageName.equals(info.provider.owner.packageName);
     }
 
-    @TargetApi(Build.VERSION_CODES.KITKAT)
     @Override
     protected ResolveInfo newResult(VPackage.ProviderIntentInfo filter, int match, int userId) {
         final VPackage.ProviderComponent provider = filter.provider;
