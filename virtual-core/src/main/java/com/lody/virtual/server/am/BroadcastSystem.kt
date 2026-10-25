@@ -213,6 +213,7 @@ class BroadcastSystem private constructor(
             if (VBinder.getCallingPid() != Process.myPid()) {
                 return
             }
+            // TODO MAKE A PENDINGINTENT AUTH SYSTEM
             if (mApp.isBooting) {
                 return
             }

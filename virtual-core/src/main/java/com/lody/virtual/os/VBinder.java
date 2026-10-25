@@ -2,8 +2,10 @@ package com.lody.virtual.os;
 
 import android.os.Binder;
 
+import com.lody.virtual.client.core.VirtualCore;
 import com.lody.virtual.client.ipc.VActivityManager;
 import com.lody.virtual.client.ipc.VPackageManager;
+import com.lody.virtual.server.am.VActivityManagerService;
 
 /**
  * @author Lody
@@ -12,7 +14,11 @@ import com.lody.virtual.client.ipc.VPackageManager;
 public class VBinder {
 
     public static int getCallingUid() {
-        return VActivityManager.get().getUidByPid(Binder.getCallingPid());
+        if (VirtualCore.get().isServerProcess()) {
+            return VActivityManagerService.get().getUidByPid(Binder.getCallingPid());
+        } else {
+            return VActivityManager.get().getUidByPid(Binder.getCallingPid());
+        }
     }
 
     public static String getCallingPackageName() {
