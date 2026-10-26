@@ -1,5 +1,7 @@
 package com.lody.virtual.client.ipc;
 
+import static com.lody.virtual.IntentHelper.BUNDLE_BINDER;
+
 import android.content.Context;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -41,7 +43,7 @@ public class ServiceManagerNative {
                 Context context = VirtualCore.get().getContext();
                 Bundle response = new ProviderCall.Builder(context, SERVICE_CP_AUTH).methodName("@").call();
                 if (response != null) {
-                    IBinder binder = BundleCompat.getBinder(response, "_VA_|_binder_");
+                    IBinder binder = BundleCompat.getBinder(response, BUNDLE_BINDER);
                     linkBinderDied(binder);
                     sFetcher = IServiceFetcher.Stub.asInterface(binder);
                 }

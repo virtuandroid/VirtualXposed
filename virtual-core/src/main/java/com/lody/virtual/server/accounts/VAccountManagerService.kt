@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
 import androidx.core.util.size
+import com.lody.virtual.IntentHelper.INTENT_USER_ID
 
 /**
  * @author Lody
@@ -1335,7 +1336,7 @@ class VAccountManagerService : IAccountManager.Stub() {
                 mAuthenticatorInfo.serviceInfo.packageName,
                 mAuthenticatorInfo.serviceInfo.name
             )
-            intent.putExtra("_VA_|_user_id_", mUserId)
+            intent.putExtra(INTENT_USER_ID, mUserId)
 
             if (!mContext.bindService(intent, this, Context.BIND_AUTO_CREATE)) {
                 Timber.d("bind attempt failed for " + toDebugString())

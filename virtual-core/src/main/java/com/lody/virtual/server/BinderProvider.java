@@ -1,5 +1,7 @@
 package com.lody.virtual.server;
 
+import static com.lody.virtual.IntentHelper.BUNDLE_BINDER;
+
 import android.content.ContentProvider;
 import android.content.ContentValues;
 import android.content.Context;
@@ -83,7 +85,7 @@ public final class BinderProvider extends ContentProvider {
     public Bundle call(String method, String arg, Bundle extras) {
         if ("@".equals(method)) {
             Bundle bundle = new Bundle();
-            BundleCompat.putBinder(bundle, "_VA_|_binder_", mServiceFetcher);
+            BundleCompat.putBinder(bundle, BUNDLE_BINDER, mServiceFetcher);
             return bundle;
         }
         return null;

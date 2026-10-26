@@ -11,7 +11,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.IIntentReceiver
 import android.content.Intent
-import android.content.ServiceConnection
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -27,12 +26,21 @@ import android.os.Parcel
 import android.os.Process
 import android.os.RemoteException
 import android.os.SystemClock
+import com.lody.virtual.IntentHelper.BROADCAST_CALLING_PACKAGE
+import com.lody.virtual.IntentHelper.BROADCAST_COMPONENT
+import com.lody.virtual.IntentHelper.BUNDLE_BINDER
+import com.lody.virtual.IntentHelper.BUNDLE_CLIENT_BINDER
+import com.lody.virtual.IntentHelper.BUNDLE_PID
+import com.lody.virtual.IntentHelper.BUNDLE_VUID
+import com.lody.virtual.IntentHelper.INTENT_EMBEDDED
+import com.lody.virtual.IntentHelper.INTENT_USER_ID
 import com.lody.virtual.client.IVClient
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.env.Constants
 import com.lody.virtual.client.env.SpecialComponentList
 import com.lody.virtual.client.ipc.ProviderCall
 import com.lody.virtual.client.ipc.VNotificationManager
+import com.lody.virtual.client.stub.StubCP.Companion.VA_INIT_PROCESS_METHOD
 import com.lody.virtual.client.stub.VASettings
 import com.lody.virtual.helper.collection.SparseArray
 import com.lody.virtual.helper.compat.ActivityManagerCompat
@@ -915,21 +923,19 @@ class VActivityManagerService : IActivityManager.Stub() {
     ): ProcessRecord? {
         val app = ProcessRecord(info, processName, vuid, vpid)
         val extras = Bundle()
-        BundleCompat.putBinder(extras, "_VA_|_binder_", app)
-        extras.putInt("_VA_|_vuid_", vuid)
-        extras.putString("_VA_|_process_", processName)
-        extras.putString("_VA_|_pkg_", info.packageName)
+        BundleCompat.putBinder(extras, BUNDLE_BINDER, app)
+        extras.putInt(BUNDLE_VUID, vuid)
         val res = ProviderCall.call(
             VASettings.getStubAuthority(vpid),
-            "_VA_|_init_process_",
+            VA_INIT_PROCESS_METHOD,
             null,
             extras
         )
         if (res == null) {
             return null
         }
-        val pid = res.getInt("_VA_|_pid_")
-        val clientBinder = BundleCompat.getBinder(res, "_VA_|_client_")
+        val pid = res.getInt(BUNDLE_PID)
+        val clientBinder = BundleCompat.getBinder(res, BUNDLE_CLIENT_BINDER)
         attachClient(pid, clientBinder)
         return app
     }
@@ -1124,7 +1130,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     ) {
         val context = VirtualCore.get().context
         if (user != null) {
-            intent.putExtra("_VA_|_user_id_", user.identifier)
+            intent.putExtra(INTENT_USER_ID, user.identifier)
         }
         // TODO: checkPermission
         context.sendOrderedBroadcast(
@@ -1137,30 +1143,16 @@ class VActivityManagerService : IActivityManager.Stub() {
         SpecialComponentList.protectIntent(intent)
         val context = VirtualCore.get().context
         if (user != null) {
-            intent.putExtra("_VA_|_user_id_", user.identifier)
+            intent.putExtra(INTENT_USER_ID, user.identifier)
         }
         context.sendBroadcast(intent)
-    }
-
-    fun bindServiceAsUser(
-        service: Intent?,
-        connection: ServiceConnection,
-        flags: Int,
-        user: VUserHandle?
-    ): Boolean {
-        var service = service
-        service = Intent(service)
-        if (user != null) {
-            service.putExtra("_VA_|_user_id_", user.identifier)
-        }
-        return VirtualCore.get().context.bindService(service, connection, flags)
     }
 
     fun sendBroadcastAsUser(intent: Intent, user: VUserHandle?, permission: String?) {
         SpecialComponentList.protectIntent(intent)
         val context = VirtualCore.get().context
         if (user != null) {
-            intent.putExtra("_VA_|_user_id_", user.identifier)
+            intent.putExtra(INTENT_USER_ID, user.identifier)
         }
         // TODO: checkPermission
         context.sendBroadcast(intent)
@@ -1170,9 +1162,9 @@ class VActivityManagerService : IActivityManager.Stub() {
         appId: Int, info: ActivityInfo, intent: Intent,
         result: PendingResultData?
     ): Boolean {
-        val realIntent = intent.getParcelableExtra<Intent?>("_VA_|_intent_")
-        val component = intent.getParcelableExtra<ComponentName?>("_VA_|_component_")
-        val userId = intent.getIntExtra("_VA_|_user_id_", VUserHandle.USER_NULL)
+        val realIntent = intent.getParcelableExtra<Intent?>(INTENT_EMBEDDED)
+        val component = intent.getParcelableExtra<ComponentName?>(BROADCAST_COMPONENT)
+        val userId = intent.getIntExtra(INTENT_USER_ID, VUserHandle.USER_NULL)
         if (realIntent == null) {
             return false
         }
@@ -1287,7 +1279,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         enforceCallingUser(userId)
         val caller = VBinder.getCallingPackageName()
         val context = VirtualCore.get().context
-        intent.putExtra("_VA_|_pkg_name_safe_", caller)
+        intent.putExtra(BROADCAST_CALLING_PACKAGE, caller)
         context.sendBroadcast(intent)
         return 0
     }

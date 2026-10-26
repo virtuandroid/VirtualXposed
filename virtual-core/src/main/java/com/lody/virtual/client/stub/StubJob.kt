@@ -14,8 +14,8 @@ import com.lody.virtual.client.core.InvocationStubManager
 import com.lody.virtual.client.hook.proxies.am.ActivityManagerStub
 import com.lody.virtual.helper.collection.SparseArray
 import com.lody.virtual.helper.utils.VLog
-import com.lody.virtual.os.VBinder
 import com.lody.virtual.os.VUserHandle
+import com.lody.virtual.IntentHelper.INTENT_USER_ID
 import com.lody.virtual.server.job.VJobSchedulerService.Companion.get
 
 /**
@@ -53,7 +53,7 @@ class StubJob : Service() {
                         mirror.android.app.job.JobParameters.jobId.set(jobParams, key.clientJobId)
                         val service = Intent()
                         service.setComponent(ComponentName(key.packageName, config.serviceName!!))
-                        service.putExtra("_VA_|_user_id_", VUserHandle.getUserId(key.vuid))
+                        service.putExtra(INTENT_USER_ID, VUserHandle.getUserId(key.vuid))
                         var bound = false
                         try {
                             bound = bindService(service, session, 0)

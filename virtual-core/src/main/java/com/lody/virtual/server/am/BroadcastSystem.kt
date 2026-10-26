@@ -12,6 +12,8 @@ import android.os.IBinder
 import android.os.Message
 import android.os.Process
 import androidx.core.content.ContextCompat
+import com.lody.virtual.IntentHelper.BROADCAST_CALLING_PACKAGE
+import com.lody.virtual.IntentHelper.BROADCAST_SPECIFIC_PACKAGE
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.env.SpecialComponentList
 import com.lody.virtual.helper.collection.ArrayMap
@@ -26,6 +28,7 @@ import mirror.android.app.LoadedApkHuaWei
 import mirror.android.rms.resource.ReceiverResourceLP
 import mirror.android.rms.resource.ReceiverResourceM
 import mirror.android.rms.resource.ReceiverResourceN
+import timber.log.Timber
 import java.util.Collections
 import java.util.LinkedList
 
@@ -214,9 +217,10 @@ class BroadcastSystem private constructor(
                 return
             }
             // This cannot be spoofed since the caller is trusted.
-            val callingPackage = intent.getStringExtra("_VA_|_pkg_name_safe_")
+            val callingPackage = intent.getStringExtra(BROADCAST_CALLING_PACKAGE)
             // Disallow private receivers
             if (callingPackage != info.packageName && !info.exported) {
+                Timber.i("Blocked package $callingPackage from sending a broadcast to ${info.name}")
                 // TODO add permission checks
                 // TODO add stricter user ID tests
                 return
@@ -227,7 +231,7 @@ class BroadcastSystem private constructor(
             if ((intent.flags and Intent.FLAG_RECEIVER_REGISTERED_ONLY) != 0 || isInitialStickyBroadcast) {
                 return
             }
-            val privilegePkg = intent.getStringExtra("_VA_|_privilege_pkg_")
+            val privilegePkg = intent.getStringExtra(BROADCAST_SPECIFIC_PACKAGE)
             if (privilegePkg != null && info.packageName != privilegePkg) {
                 return
             }

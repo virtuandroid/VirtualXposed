@@ -1,5 +1,12 @@
 package com.lody.virtual.client.core;
 
+import static com.lody.virtual.IntentHelper.INTENT_ACTIVITY_SPLASH;
+import static com.lody.virtual.IntentHelper.INTENT_EMBEDDED;
+import static com.lody.virtual.IntentHelper.INTENT_SENDER;
+import static com.lody.virtual.IntentHelper.INTENT_UI_CALLBACK;
+import static com.lody.virtual.IntentHelper.INTENT_URI;
+import static com.lody.virtual.IntentHelper.INTENT_USER_ID;
+
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.ActivityManager;
@@ -59,6 +66,8 @@ import com.lody.virtual.server.permission.VPermissionManager;
 import com.virtualxposed.hook.VHookClient;
 import com.virtualxposed.log.client.VLoggingClient;
 
+import org.chickenhook.restrictionbypass.Unseal;
+
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Comparator;
@@ -66,8 +75,6 @@ import java.util.List;
 
 import mirror.android.app.ActivityThread;
 import mirror.android.permission.PermissionManager;
-
-import org.chickenhook.restrictionbypass.Unseal;
 
 /**
  * @author Lody
@@ -525,15 +532,15 @@ public final class VirtualCore {
         shortcutIntent.setClassName(getHostPkg(), Constants.SHORTCUT_PROXY_ACTIVITY_NAME);
         shortcutIntent.addCategory(Intent.CATEGORY_DEFAULT);
         if (splash != null) {
-            shortcutIntent.putExtra("_VA_|_splash_", splash.toUri(0));
+            shortcutIntent.putExtra(INTENT_ACTIVITY_SPLASH, splash.toUri(0));
         }
-        shortcutIntent.putExtra("_VA_|_intent_", targetIntent);
-        shortcutIntent.putExtra("_VA_|_uri_", targetIntent.toUri(0));
-        shortcutIntent.putExtra("_VA_|_user_id_", userId);
+        shortcutIntent.putExtra(INTENT_EMBEDDED, targetIntent);
+        shortcutIntent.putExtra(INTENT_URI, targetIntent.toUri(0));
+        shortcutIntent.putExtra(INTENT_USER_ID, userId);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
             // bad parcel.
-            shortcutIntent.removeExtra("_VA_|_intent_");
+            shortcutIntent.removeExtra(INTENT_EMBEDDED);
 
             Icon withBitmap = Icon.createWithBitmap(icon);
             ShortcutInfo likeShortcut = new ShortcutInfo.Builder(context, id)
@@ -651,11 +658,11 @@ public final class VirtualCore {
         shortcutIntent.setClassName(getHostPkg(), Constants.SHORTCUT_PROXY_ACTIVITY_NAME);
         shortcutIntent.addCategory(Intent.CATEGORY_DEFAULT);
         if (splash != null) {
-            shortcutIntent.putExtra("_VA_|_splash_", splash.toUri(0));
+            shortcutIntent.putExtra(INTENT_ACTIVITY_SPLASH, splash.toUri(0));
         }
-        shortcutIntent.putExtra("_VA_|_intent_", targetIntent);
-        shortcutIntent.putExtra("_VA_|_uri_", targetIntent.toUri(0));
-        shortcutIntent.putExtra("_VA_|_user_id_", VUserHandle.myUserId());
+        shortcutIntent.putExtra(INTENT_EMBEDDED, targetIntent);
+        shortcutIntent.putExtra(INTENT_URI, targetIntent.toUri(0));
+        shortcutIntent.putExtra(INTENT_USER_ID, VUserHandle.myUserId());
 
         Intent addIntent = new Intent();
         addIntent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent);
@@ -671,8 +678,8 @@ public final class VirtualCore {
     public void setUiCallback(Intent intent, IUiCallback callback) {
         if (callback != null) {
             Bundle bundle = new Bundle();
-            BundleCompat.putBinder(bundle, "_VA_|_ui_callback_", callback.asBinder());
-            intent.putExtra("_VA_|_sender_", bundle);
+            BundleCompat.putBinder(bundle, INTENT_UI_CALLBACK, callback.asBinder());
+            intent.putExtra(INTENT_SENDER, bundle);
         }
     }
 
@@ -685,9 +692,9 @@ public final class VirtualCore {
             return null;
         }
         try {
-            Bundle bundle = intent.getBundleExtra("_VA_|_sender_");
+            Bundle bundle = intent.getBundleExtra(INTENT_SENDER);
             if (bundle != null) {
-                IBinder uicallbackToken = BundleCompat.getBinder(bundle, "_VA_|_ui_callback_");
+                IBinder uicallbackToken = BundleCompat.getBinder(bundle, INTENT_UI_CALLBACK);
                 return IUiCallback.Stub.asInterface(uicallbackToken);
             }
         } catch (Throwable ignored) {

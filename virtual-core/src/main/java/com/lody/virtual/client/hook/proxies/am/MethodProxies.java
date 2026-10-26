@@ -1,5 +1,12 @@
 package com.lody.virtual.client.hook.proxies.am;
 
+import static com.lody.virtual.IntentHelper.BROADCAST_UID;
+import static com.lody.virtual.IntentHelper.INTENT_CREATOR;
+import static com.lody.virtual.IntentHelper.INTENT_EMBEDDED;
+import static com.lody.virtual.IntentHelper.INTENT_FROM_INNER;
+import static com.lody.virtual.IntentHelper.INTENT_URI;
+import static com.lody.virtual.IntentHelper.INTENT_USER_ID;
+
 import android.Manifest;
 import android.annotation.TargetApi;
 import android.app.ActivityManager;
@@ -362,10 +369,10 @@ class MethodProxies {
                 default:
                     return null;
             }
-            newIntent.putExtra("_VA_|_user_id_", VUserHandle.myUserId());
-            newIntent.putExtra("_VA_|_intent_", intent);
-            newIntent.putExtra("_VA_|_creator_", creator);
-            newIntent.putExtra("_VA_|_from_inner_", true);
+            newIntent.putExtra(INTENT_USER_ID, VUserHandle.myUserId());
+            newIntent.putExtra(INTENT_EMBEDDED, intent);
+            newIntent.putExtra(INTENT_CREATOR, creator);
+            newIntent.putExtra(INTENT_FROM_INNER, true);
             return newIntent;
         }
 
@@ -858,8 +865,8 @@ class MethodProxies {
         @Override
         public Object afterCall(Object who, Method method, Object[] args, Object result) throws Throwable {
             Intent intent = (Intent) super.afterCall(who, method, args, result);
-            if (intent != null && intent.hasExtra("_VA_|_intent_")) {
-                return intent.getParcelableExtra("_VA_|_intent_");
+            if (intent != null && intent.hasExtra(INTENT_EMBEDDED)) {
+                return intent.getParcelableExtra(INTENT_EMBEDDED);
             }
             return intent;
         }
@@ -927,7 +934,7 @@ class MethodProxies {
             int flags = (int) (long) args[5];
             int userId = VUserHandle.myUserId();
             if (isServerProcess()) {
-                userId = service.getIntExtra("_VA_|_user_id_", VUserHandle.USER_NULL);
+                userId = service.getIntExtra(INTENT_USER_ID, VUserHandle.USER_NULL);
             }
             if (userId == VUserHandle.USER_NULL) {
                 return method.invoke(who, args);
@@ -996,12 +1003,12 @@ class MethodProxies {
                 return method.invoke(who, args);
             }
             int userId = VUserHandle.myUserId();
-            if (service.getBooleanExtra("_VA_|_from_inner_", false)) {
-                userId = service.getIntExtra("_VA_|_user_id_", userId);
-                service = service.getParcelableExtra("_VA_|_intent_");
+            if (service.getBooleanExtra(INTENT_FROM_INNER, false)) {
+                userId = service.getIntExtra(INTENT_USER_ID, userId);
+                service = service.getParcelableExtra(INTENT_EMBEDDED);
             } else {
                 if (isServerProcess()) {
-                    userId = service.getIntExtra("_VA_|_user_id_", VUserHandle.USER_NULL);
+                    userId = service.getIntExtra(INTENT_USER_ID, VUserHandle.USER_NULL);
                 }
             }
             service.setDataAndType(service.getData(), resolvedType);
@@ -1416,8 +1423,8 @@ class MethodProxies {
                 if (!accept(intent)) {
                     return;
                 }
-                if (intent.hasExtra("_VA_|_intent_")) {
-                    intent = intent.getParcelableExtra("_VA_|_intent_");
+                if (intent.hasExtra(INTENT_EMBEDDED)) {
+                    intent = intent.getParcelableExtra(INTENT_EMBEDDED);
                 }
                 SpecialComponentList.unprotectIntent(intent);
                 if (Build.VERSION.SDK_INT > Build.VERSION_CODES.JELLY_BEAN) {
@@ -1428,11 +1435,11 @@ class MethodProxies {
             }
 
             private boolean accept(Intent intent) {
-                int uid = intent.getIntExtra("_VA_|_uid_", -1);
+                int uid = intent.getIntExtra(BROADCAST_UID, -1);
                 if (uid != -1) {
                     return VClientImpl.get().getVUid() == uid;
                 }
-                int userId = intent.getIntExtra("_VA_|_user_id_", -1);
+                int userId = intent.getIntExtra(INTENT_USER_ID, -1);
                 return userId == -1 || userId == VUserHandle.myUserId();
             }
 
@@ -1816,9 +1823,9 @@ class MethodProxies {
                     Intent newShortcutIntent = new Intent();
                     newShortcutIntent.setClassName(getHostPkg(), Constants.SHORTCUT_PROXY_ACTIVITY_NAME);
                     newShortcutIntent.addCategory(Intent.CATEGORY_DEFAULT);
-                    newShortcutIntent.putExtra("_VA_|_intent_", shortcut);
-                    newShortcutIntent.putExtra("_VA_|_uri_", shortcut.toUri(0));
-                    newShortcutIntent.putExtra("_VA_|_user_id_", VUserHandle.myUserId());
+                    newShortcutIntent.putExtra(INTENT_EMBEDDED, shortcut);
+                    newShortcutIntent.putExtra(INTENT_URI, shortcut.toUri(0));
+                    newShortcutIntent.putExtra(INTENT_USER_ID, VUserHandle.myUserId());
                     intent.removeExtra(Intent.EXTRA_SHORTCUT_INTENT);
                     intent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, newShortcutIntent);
 
@@ -1851,7 +1858,7 @@ class MethodProxies {
                 ComponentName componentName = shortcut.resolveActivity(getPM());
                 if (componentName != null) {
                     Intent newShortcutIntent = new Intent();
-                    newShortcutIntent.putExtra("_VA_|_uri_", shortcut.toUri(0));
+                    newShortcutIntent.putExtra(INTENT_URI, shortcut.toUri(0));
                     newShortcutIntent.setClassName(getHostPkg(), Constants.SHORTCUT_PROXY_ACTIVITY_NAME);
                     newShortcutIntent.removeExtra(Intent.EXTRA_SHORTCUT_INTENT);
                     intent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, newShortcutIntent);

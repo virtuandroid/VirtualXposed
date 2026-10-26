@@ -1,33 +1,29 @@
-package com.lody.virtual.client.stub;
+package com.lody.virtual.client.stub
 
-import com.lody.virtual.client.ipc.VActivityManager;
-
-import android.app.Service;
-import android.content.Intent;
-import android.os.IBinder;
-
+import android.app.Service
+import android.content.Intent
+import android.os.IBinder
+import com.lody.virtual.IntentHelper.INTENT_EMBEDDED
+import com.lody.virtual.IntentHelper.INTENT_USER_ID
+import com.lody.virtual.client.ipc.VActivityManager
 
 /**
  * @author Lody
  */
-
-public class StubPendingService extends Service {
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
+class StubPendingService : Service() {
+    override fun onBind(intent: Intent?): IBinder? {
+        return null
     }
 
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        // _VA_|_from_inner_ marked
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent != null) {
-            Intent realIntent = intent.getParcelableExtra("_VA_|_intent_");
-            int userId = intent.getIntExtra("_VA_|_user_id_", 0);
+            val realIntent = intent.getParcelableExtra<Intent?>(INTENT_EMBEDDED)
+            val userId = intent.getIntExtra(INTENT_USER_ID, 0)
             if (realIntent != null) {
-                VActivityManager.get().startService(null, realIntent, null, userId);
+                VActivityManager.get().startService(null, realIntent, null, userId)
             }
         }
-        stopSelf();
-        return START_NOT_STICKY;
+        stopSelf()
+        return START_NOT_STICKY
     }
 }

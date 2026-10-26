@@ -1,5 +1,9 @@
 package com.lody.virtual.client.stub;
 
+import static com.lody.virtual.IntentHelper.INTENT_ACTIVITY_SPLASH;
+import static com.lody.virtual.IntentHelper.INTENT_URI;
+import static com.lody.virtual.IntentHelper.INTENT_USER_ID;
+
 import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Intent;
@@ -25,9 +29,9 @@ public class ShortcutHandleActivity extends Activity {
         if (intent == null) {
             return;
         }
-        int userId = intent.getIntExtra("_VA_|_user_id_", 0);
-        String splashUri = intent.getStringExtra("_VA_|_splash_");
-        String targetUri = intent.getStringExtra("_VA_|_uri_");
+        int userId = intent.getIntExtra(INTENT_USER_ID, 0);
+        String splashUri = intent.getStringExtra(INTENT_ACTIVITY_SPLASH);
+        String targetUri = intent.getStringExtra(INTENT_URI);
         Intent splashIntent = null;
         Intent targetIntent = null;
         if (splashUri != null) {

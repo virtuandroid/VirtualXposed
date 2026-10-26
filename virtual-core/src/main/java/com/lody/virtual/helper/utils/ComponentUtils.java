@@ -1,5 +1,13 @@
 package com.lody.virtual.helper.utils;
 
+import static android.content.pm.ActivityInfo.LAUNCH_SINGLE_INSTANCE;
+import static com.lody.virtual.IntentHelper.BROADCAST_COMPONENT;
+import static com.lody.virtual.IntentHelper.INTENT_COMPONENT_CALLER;
+import static com.lody.virtual.IntentHelper.INTENT_CREATOR;
+import static com.lody.virtual.IntentHelper.INTENT_EMBEDDED;
+import static com.lody.virtual.IntentHelper.INTENT_FROM_INNER;
+import static com.lody.virtual.IntentHelper.INTENT_USER_ID;
+
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -17,8 +25,6 @@ import com.lody.virtual.client.stub.StubPendingReceiver;
 import com.lody.virtual.client.stub.StubPendingService;
 import com.lody.virtual.helper.compat.ObjectsCompat;
 import com.lody.virtual.os.VUserHandle;
-
-import static android.content.pm.ActivityInfo.LAUNCH_SINGLE_INSTANCE;
 
 /**
  * @author Lody
@@ -112,21 +118,21 @@ public class ComponentUtils {
         ComponentName component = intent.getComponent();
         String pkg = intent.getPackage();
         if (component != null) {
-            newIntent.putExtra("_VA_|_user_id_", userId);
+            newIntent.putExtra(INTENT_USER_ID, userId);
             newIntent.setAction(String.format("_VA_%s_%s", component.getPackageName(), component.getClassName()));
-            newIntent.putExtra("_VA_|_component_", component);
-            newIntent.putExtra("_VA_|_intent_", new Intent(intent));
+            newIntent.putExtra(BROADCAST_COMPONENT, component);
+            newIntent.putExtra(INTENT_EMBEDDED, new Intent(intent));
         } else if (pkg != null) {
-            newIntent.putExtra("_VA_|_user_id_", userId);
-            newIntent.putExtra("_VA_|_creator_", pkg);
-            newIntent.putExtra("_VA_|_intent_", new Intent(intent));
+            newIntent.putExtra(INTENT_USER_ID, userId);
+            newIntent.putExtra(INTENT_CREATOR, pkg);
+            newIntent.putExtra(INTENT_EMBEDDED, new Intent(intent));
             String protectedAction = SpecialComponentList.protectAction(intent.getAction());
             if (protectedAction != null) {
                 newIntent.setAction(protectedAction);
             }
         } else {
-            newIntent.putExtra("_VA_|_user_id_", userId);
-            newIntent.putExtra("_VA_|_intent_", new Intent(intent));
+            newIntent.putExtra(INTENT_USER_ID, userId);
+            newIntent.putExtra(INTENT_EMBEDDED, new Intent(intent));
             String protectedAction = SpecialComponentList.protectAction(intent.getAction());
             if (protectedAction != null) {
                 newIntent.setAction(protectedAction);
@@ -149,7 +155,7 @@ public class ComponentUtils {
                         try {
                             Parcelable activityForToken = VActivityManager.get().getActivityForToken(iBinder);
                             if (activityForToken != null) {
-                                cloneFilter.putExtra("_VA_|_caller_", activityForToken);
+                                cloneFilter.putExtra(INTENT_COMPONENT_CALLER, activityForToken);
                                 break;
                             }
                         } catch (Throwable th) {
@@ -167,10 +173,10 @@ public class ComponentUtils {
             default:
                 return null;
         }
-        cloneFilter.putExtra("_VA_|_user_id_", VUserHandle.myUserId());
-        cloneFilter.putExtra("_VA_|_intent_", intent);
-        cloneFilter.putExtra("_VA_|_creator_", creator);
-        cloneFilter.putExtra("_VA_|_from_inner_", true);
+        cloneFilter.putExtra(INTENT_USER_ID, VUserHandle.myUserId());
+        cloneFilter.putExtra(INTENT_EMBEDDED, intent);
+        cloneFilter.putExtra(INTENT_CREATOR, creator);
+        cloneFilter.putExtra(INTENT_FROM_INNER, true);
         return cloneFilter;
     }
 }

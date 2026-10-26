@@ -1,5 +1,9 @@
 package com.lody.virtual.server.pm;
 
+import static com.lody.virtual.IntentHelper.BROADCAST_SPECIFIC_PACKAGE;
+import static com.lody.virtual.IntentHelper.INTENT_EMBEDDED;
+import static com.lody.virtual.IntentHelper.INTENT_USER_ID;
+
 import android.content.Intent;
 
 import com.lody.virtual.client.env.Constants;
@@ -50,11 +54,10 @@ public class PrivilegeAppOptimizer {
         }
     }
 
-    public boolean performOptimize(String packageName, int userId) {
+    public void performOptimize(String packageName, int userId) {
         VActivityManagerService.get().sendBroadcastAsUser(
                 specifyApp(new Intent(Intent.ACTION_BOOT_COMPLETED), packageName, userId)
                 , new VUserHandle(userId));
-        return true;
     }
 
     public static void notifyBootFinish() {
@@ -67,9 +70,9 @@ public class PrivilegeAppOptimizer {
     }
 
     private Intent specifyApp(Intent intent, String packageName, int userId) {
-        intent.putExtra("_VA_|_privilege_pkg_", packageName);
-        intent.putExtra("_VA_|_user_id_", userId);
-        intent.putExtra("_VA_|_intent_", new Intent(Intent.ACTION_BOOT_COMPLETED));
+        intent.putExtra(BROADCAST_SPECIFIC_PACKAGE, packageName);
+        intent.putExtra(INTENT_USER_ID, userId);
+        intent.putExtra(INTENT_EMBEDDED, new Intent(Intent.ACTION_BOOT_COMPLETED));
         return intent;
     }
 

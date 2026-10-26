@@ -1,5 +1,8 @@
 package com.lody.virtual.client.hook.proxies.shortcut;
 
+import static com.lody.virtual.IntentHelper.INTENT_URI;
+import static com.lody.virtual.IntentHelper.INTENT_USER_ID;
+
 import android.annotation.TargetApi;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -97,8 +100,8 @@ public class ShortcutServiceStub extends BinderInvocationProxy {
                 shortcutIntent.setClassName(hostPackage, Constants.SHORTCUT_PROXY_ACTIVITY_NAME);
                 shortcutIntent.addCategory(Intent.CATEGORY_DEFAULT);
 
-                persistableBundle.putString("_VA_|_uri_", intent.toUri(0));
-                persistableBundle.putInt("_VA_|_user_id_", 0);
+                persistableBundle.putString(INTENT_URI, intent.toUri(0));
+                persistableBundle.putInt(INTENT_USER_ID, 0);
                 swap[i] = shortcutIntent;
             }
 

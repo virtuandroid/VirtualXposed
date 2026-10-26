@@ -1,377 +1,282 @@
-package com.lody.virtual.client.stub;
+package com.lody.virtual.client.stub
 
-import android.content.ContentProvider;
-import android.content.ContentValues;
-import android.database.Cursor;
-import android.net.Uri;
-import android.os.Bundle;
-import android.os.ConditionVariable;
-import android.os.IBinder;
-import android.os.Process;
-
-import com.lody.virtual.client.VClientImpl;
-import com.lody.virtual.client.core.VirtualCore;
-import com.lody.virtual.helper.compat.BundleCompat;
+import android.content.ContentProvider
+import android.content.ContentValues
+import android.database.Cursor
+import android.net.Uri
+import android.os.Bundle
+import android.os.Process
+import com.lody.virtual.IntentHelper.BUNDLE_BINDER
+import com.lody.virtual.IntentHelper.BUNDLE_CLIENT_BINDER
+import com.lody.virtual.IntentHelper.BUNDLE_PID
+import com.lody.virtual.IntentHelper.BUNDLE_VUID
+import com.lody.virtual.client.VClientImpl
+import com.lody.virtual.client.core.VirtualCore
+import com.lody.virtual.helper.compat.BundleCompat
 
 /**
  * @author Lody
- *
  */
-public class StubCP extends ContentProvider {
-
-	@Override
-	public boolean onCreate() {
-		return true;
-	}
-
-	@Override
-	public Bundle call(String method, String arg, Bundle extras) {
-		if ("_VA_|_init_process_".equals(method)) {
-			return initProcess(extras);
-		}
-		return null;
-	}
+open class StubCP : ContentProvider() {
+    override fun onCreate(): Boolean {
+        return true
+    }
 
-	private Bundle initProcess(Bundle extras) {
-		ConditionVariable lock = VirtualCore.get().getInitLock();
-		if (lock != null) {
-			lock.block();
-		}
-		IBinder token = BundleCompat.getBinder(extras,"_VA_|_binder_");
-		int vuid = extras.getInt("_VA_|_vuid_");
-		VClientImpl client = VClientImpl.get();
-		client.initProcess(token, vuid);
-		Bundle res = new Bundle();
-		BundleCompat.putBinder(res, "_VA_|_client_", client.asBinder());
-		res.putInt("_VA_|_pid_", Process.myPid());
-		return res;
-	}
+    override fun query(
+        uri: Uri,
+        projection: Array<out String?>?,
+        selection: String?,
+        selectionArgs: Array<out String?>?,
+        sortOrder: String?
+    ): Cursor? {
+         return null
+    }
 
-	@Override
-	public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
-		return null;
-	}
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        if (method == VA_INIT_PROCESS_METHOD) {
+            return initProcess(extras)
+        }
+        return null
+    }
 
-	@Override
-	public String getType(Uri uri) {
-		return null;
-	}
+    private fun initProcess(extras: Bundle?): Bundle? {
+        val lock = VirtualCore.get().initLock
+        if (lock != null) {
+            lock.block()
+        }
+        val token = BundleCompat.getBinder(extras, BUNDLE_BINDER)
+        val vuid = extras?.getInt(BUNDLE_VUID) ?: return null
+        val client = VClientImpl.get()
+        client.initProcess(token, vuid)
+        val res = Bundle()
+        BundleCompat.putBinder(res, BUNDLE_CLIENT_BINDER, client.asBinder())
+        res.putInt(BUNDLE_PID, Process.myPid())
+        return res
+    }
 
-	@Override
-	public Uri insert(Uri uri, ContentValues values) {
-		return null;
-	}
+    override fun getType(uri: Uri): String? {
+        return null
+    }
 
-	@Override
-	public int delete(Uri uri, String selection, String[] selectionArgs) {
-		return 0;
-	}
+    override fun insert(uri: Uri, values: ContentValues?): Uri? {
+        return null
+    }
 
-	@Override
-	public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
-		return 0;
-	}
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<String?>?): Int {
+        return 0
+    }
 
+    override fun update(
+        uri: Uri,
+        values: ContentValues?,
+        selection: String?,
+        selectionArgs: Array<String?>?
+    ): Int {
+        return 0
+    }
 
-	public static class C0 extends StubCP {
-	}
+    class C0 : StubCP()
 
-	public static class C1 extends StubCP {
-	}
+    class C1 : StubCP()
 
-	public static class C2 extends StubCP {
-	}
+    class C2 : StubCP()
 
-	public static class C3 extends StubCP {
-	}
+    class C3 : StubCP()
 
-	public static class C4 extends StubCP {
-	}
+    class C4 : StubCP()
 
-	public static class C5 extends StubCP {
-	}
+    class C5 : StubCP()
 
-	public static class C6 extends StubCP {
-	}
+    class C6 : StubCP()
 
-	public static class C7 extends StubCP {
-	}
+    class C7 : StubCP()
 
-	public static class C8 extends StubCP {
-	}
+    class C8 : StubCP()
 
-	public static class C9 extends StubCP {
-	}
+    class C9 : StubCP()
 
-	public static class C10 extends StubCP {
-	}
+    class C10 : StubCP()
 
-	public static class C11 extends StubCP {
-	}
+    class C11 : StubCP()
 
-	public static class C12 extends StubCP {
-	}
+    class C12 : StubCP()
 
-	public static class C13 extends StubCP {
-	}
+    class C13 : StubCP()
 
-	public static class C14 extends StubCP {
-	}
+    class C14 : StubCP()
 
-	public static class C15 extends StubCP {
-	}
+    class C15 : StubCP()
 
-	public static class C16 extends StubCP {
-	}
+    class C16 : StubCP()
 
-	public static class C17 extends StubCP {
-	}
+    class C17 : StubCP()
 
-	public static class C18 extends StubCP {
-	}
+    class C18 : StubCP()
 
-	public static class C19 extends StubCP {
-	}
+    class C19 : StubCP()
 
-	public static class C20 extends StubCP {
-	}
+    class C20 : StubCP()
 
-	public static class C21 extends StubCP {
-	}
+    class C21 : StubCP()
 
-	public static class C22 extends StubCP {
-	}
+    class C22 : StubCP()
 
-	public static class C23 extends StubCP {
-	}
+    class C23 : StubCP()
 
-	public static class C24 extends StubCP {
-	}
+    class C24 : StubCP()
 
-	public static class C25 extends StubCP {
-	}
+    class C25 : StubCP()
 
-	public static class C26 extends StubCP {
-	}
+    class C26 : StubCP()
 
-	public static class C27 extends StubCP {
-	}
+    class C27 : StubCP()
 
-	public static class C28 extends StubCP {
-	}
+    class C28 : StubCP()
 
-	public static class C29 extends StubCP {
-	}
+    class C29 : StubCP()
 
-	public static class C30 extends StubCP {
-	}
+    class C30 : StubCP()
 
-	public static class C31 extends StubCP {
-	}
+    class C31 : StubCP()
 
-	public static class C32 extends StubCP {
-	}
+    class C32 : StubCP()
 
-	public static class C33 extends StubCP {
-	}
+    class C33 : StubCP()
 
-	public static class C34 extends StubCP {
-	}
+    class C34 : StubCP()
 
-	public static class C35 extends StubCP {
-	}
+    class C35 : StubCP()
 
-	public static class C36 extends StubCP {
-	}
+    class C36 : StubCP()
 
-	public static class C37 extends StubCP {
-	}
+    class C37 : StubCP()
 
-	public static class C38 extends StubCP {
-	}
+    class C38 : StubCP()
 
-	public static class C39 extends StubCP {
-	}
+    class C39 : StubCP()
 
-	public static class C40 extends StubCP {
-	}
+    class C40 : StubCP()
 
-	public static class C41 extends StubCP {
-	}
+    class C41 : StubCP()
 
-	public static class C42 extends StubCP {
-	}
+    class C42 : StubCP()
 
-	public static class C43 extends StubCP {
-	}
+    class C43 : StubCP()
 
-	public static class C44 extends StubCP {
-	}
+    class C44 : StubCP()
 
-	public static class C45 extends StubCP {
-	}
+    class C45 : StubCP()
 
-	public static class C46 extends StubCP {
-	}
+    class C46 : StubCP()
 
-	public static class C47 extends StubCP {
-	}
+    class C47 : StubCP()
 
-	public static class C48 extends StubCP {
-	}
+    class C48 : StubCP()
 
-	public static class C49 extends StubCP {
-	}
+    class C49 : StubCP()
 
-	public static class C50 extends StubCP {
-	}
+    class C50 : StubCP()
 
-	public static class C51 extends StubCP {
-	}
+    class C51 : StubCP()
 
-	public static class C52 extends StubCP {
-	}
+    class C52 : StubCP()
 
-	public static class C53 extends StubCP {
-	}
+    class C53 : StubCP()
 
-	public static class C54 extends StubCP {
-	}
+    class C54 : StubCP()
 
-	public static class C55 extends StubCP {
-	}
+    class C55 : StubCP()
 
-	public static class C56 extends StubCP {
-	}
+    class C56 : StubCP()
 
-	public static class C57 extends StubCP {
-	}
+    class C57 : StubCP()
 
-	public static class C58 extends StubCP {
-	}
+    class C58 : StubCP()
 
-	public static class C59 extends StubCP {
-	}
+    class C59 : StubCP()
 
-	public static class C60 extends StubCP {
-	}
+    class C60 : StubCP()
 
-	public static class C61 extends StubCP {
-	}
+    class C61 : StubCP()
 
-	public static class C62 extends StubCP {
-	}
+    class C62 : StubCP()
 
-	public static class C63 extends StubCP {
-	}
+    class C63 : StubCP()
 
-	public static class C64 extends StubCP {
-	}
+    class C64 : StubCP()
 
-	public static class C65 extends StubCP {
-	}
+    class C65 : StubCP()
 
-	public static class C66 extends StubCP {
-	}
+    class C66 : StubCP()
 
-	public static class C67 extends StubCP {
-	}
+    class C67 : StubCP()
 
-	public static class C68 extends StubCP {
-	}
+    class C68 : StubCP()
 
-	public static class C69 extends StubCP {
-	}
+    class C69 : StubCP()
 
-	public static class C70 extends StubCP {
-	}
+    class C70 : StubCP()
 
-	public static class C71 extends StubCP {
-	}
+    class C71 : StubCP()
 
-	public static class C72 extends StubCP {
-	}
+    class C72 : StubCP()
 
-	public static class C73 extends StubCP {
-	}
+    class C73 : StubCP()
 
-	public static class C74 extends StubCP {
-	}
+    class C74 : StubCP()
 
-	public static class C75 extends StubCP {
-	}
+    class C75 : StubCP()
 
-	public static class C76 extends StubCP {
-	}
+    class C76 : StubCP()
 
-	public static class C77 extends StubCP {
-	}
+    class C77 : StubCP()
 
-	public static class C78 extends StubCP {
-	}
+    class C78 : StubCP()
 
-	public static class C79 extends StubCP {
-	}
+    class C79 : StubCP()
 
-	public static class C80 extends StubCP {
-	}
+    class C80 : StubCP()
 
-	public static class C81 extends StubCP {
-	}
+    class C81 : StubCP()
 
-	public static class C82 extends StubCP {
-	}
+    class C82 : StubCP()
 
-	public static class C83 extends StubCP {
-	}
+    class C83 : StubCP()
 
-	public static class C84 extends StubCP {
-	}
+    class C84 : StubCP()
 
-	public static class C85 extends StubCP {
-	}
+    class C85 : StubCP()
 
-	public static class C86 extends StubCP {
-	}
+    class C86 : StubCP()
 
-	public static class C87 extends StubCP {
-	}
+    class C87 : StubCP()
 
-	public static class C88 extends StubCP {
-	}
+    class C88 : StubCP()
 
-	public static class C89 extends StubCP {
-	}
+    class C89 : StubCP()
 
-	public static class C90 extends StubCP {
-	}
+    class C90 : StubCP()
 
-	public static class C91 extends StubCP {
-	}
+    class C91 : StubCP()
 
-	public static class C92 extends StubCP {
-	}
+    class C92 : StubCP()
 
-	public static class C93 extends StubCP {
-	}
+    class C93 : StubCP()
 
-	public static class C94 extends StubCP {
-	}
+    class C94 : StubCP()
 
-	public static class C95 extends StubCP {
-	}
+    class C95 : StubCP()
 
-	public static class C96 extends StubCP {
-	}
+    class C96 : StubCP()
 
-	public static class C97 extends StubCP {
-	}
+    class C97 : StubCP()
 
-	public static class C98 extends StubCP {
-	}
+    class C98 : StubCP()
 
-	public static class C99 extends StubCP {
-	}
+    class C99 : StubCP()
 
 
+    companion object {
+        const val VA_INIT_PROCESS_METHOD: String = "_VA_|_init_process_"
+    }
 }
