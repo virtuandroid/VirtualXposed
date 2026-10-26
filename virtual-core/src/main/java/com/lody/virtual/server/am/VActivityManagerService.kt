@@ -112,8 +112,8 @@ class VActivityManagerService : IActivityManager.Stub() {
 
 
     override fun startActivity(
-        intent: Intent?,
-        info: ActivityInfo?,
+        intent: Intent,
+        info: ActivityInfo,
         resultTo: IBinder?,
         options: Bundle?,
         resultWho: String?,
@@ -147,15 +147,13 @@ class VActivityManagerService : IActivityManager.Stub() {
         enforceCallingUser(userId)
 
         synchronized(this) {
-            val infos = arrayOfNulls<ActivityInfo>(intents.size)
-            for (i in intents.indices) {
-                val ai = VirtualCore.get().resolveActivityInfo(intents[i], userId)
-                    ?: return ActivityManagerCompat.START_INTENT_NOT_RESOLVED
-                infos[i] = ai
-            }
+            val infos = intents.map { intent ->
+                VirtualCore.get().resolveActivityInfo(intent, userId) ?: return ActivityManagerCompat.START_INTENT_NOT_RESOLVED
+            }.toTypedArray()
+
             return mMainStack.startActivitiesLocked(
                 userId,
-                intents,
+                intents.filterNotNull().toTypedArray(),
                 infos,
                 resolvedTypes,
                 token,
@@ -203,7 +201,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         flags: Int
     ) {
         val pid = getCallingPid()
-        val targetApp = findProcessLocked(pid)
+        val targetApp = findProcessLocked(pid) ?: return
         mMainStack.onActivityCreated(
             targetApp,
             component,
