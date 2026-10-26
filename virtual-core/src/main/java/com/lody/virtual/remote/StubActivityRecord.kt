@@ -13,13 +13,13 @@ import com.lody.virtual.IntentHelper.INTENT_USER_ID
  */
 class StubActivityRecord {
     @JvmField
-    var intent: Intent?
+    val intent: Intent?
     @JvmField
-    var info: ActivityInfo?
+    val info: ActivityInfo?
     @JvmField
-    var caller: ComponentName?
+    val caller: ComponentName?
     @JvmField
-    var userId: Int
+    val userId: Int
 
     constructor(intent: Intent?, info: ActivityInfo?, caller: ComponentName?, userId: Int) {
         this.intent = intent

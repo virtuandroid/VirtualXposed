@@ -313,16 +313,14 @@ class VAppManagerService : IAppManager.Stub() {
 
     private fun chmodPackageDictionary(packageFile: File?) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                if (FileUtils.isSymlink(packageFile)) {
-                    return
-                }
-                FileUtils.chmod(
-                    packageFile?.getParentFile()!!.absolutePath,
-                    FileUtils.FileMode.MODE_755
-                )
-                FileUtils.chmod(packageFile.absolutePath, FileUtils.FileMode.MODE_755)
+            if (FileUtils.isSymlink(packageFile)) {
+                return
             }
+            FileUtils.chmod(
+                packageFile?.getParentFile()!!.absolutePath,
+                FileUtils.FileMode.MODE_755
+            )
+            FileUtils.chmod(packageFile.absolutePath, FileUtils.FileMode.MODE_755)
         } catch (e: Exception) {
             e(e)
         }
@@ -467,15 +465,12 @@ class VAppManagerService : IAppManager.Stub() {
         return IntArray(0)
     }
 
-    override fun getInstalledApps(flags: Int): MutableList<InstalledAppInfo?> {
+    override fun getInstalledApps(flags: Int): List<InstalledAppInfo?> {
         // TODO implement scoping
-        val infoList: MutableList<InstalledAppInfo?> =
-            ArrayList(installedAppCount)
-        for (p in PackageCacheManager.PACKAGE_CACHE.values) {
-            val setting = p.mExtras as PackageSetting
-            infoList.add(setting.appInfo)
+        return PackageCacheManager.PACKAGE_CACHE.values.mapNotNull { p ->
+            val setting = p.mExtras
+            setting?.appInfo
         }
-        return infoList
     }
 
     override fun getInstalledAppsAsUser(userId: Int, flags: Int): MutableList<InstalledAppInfo?> {

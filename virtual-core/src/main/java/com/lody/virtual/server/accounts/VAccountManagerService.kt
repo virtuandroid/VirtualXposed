@@ -23,6 +23,8 @@ import android.text.TextUtils
 import android.util.AttributeSet
 import android.util.SparseArray
 import android.util.Xml
+import androidx.core.util.size
+import com.lody.virtual.IntentHelper.INTENT_USER_ID
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.helper.compat.AccountManagerCompat
 import com.lody.virtual.os.VBinder
@@ -43,8 +45,6 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
-import androidx.core.util.size
-import com.lody.virtual.IntentHelper.INTENT_USER_ID
 
 /**
  * @author Lody
@@ -816,7 +816,7 @@ class VAccountManagerService : IAccountManager.Stub() {
             val iterator = authTokenRecords.iterator()
             while (iterator.hasNext()) {
                 val one = iterator.next()
-                if (one.expiryEpochMillis > 0 && one.expiryEpochMillis < now) {
+                if (one.expiryEpochMillis in 1..<now) {
                     iterator.remove()
                 } else if (record == one) {
                     authToken = record.authToken
@@ -838,7 +838,7 @@ class VAccountManagerService : IAccountManager.Stub() {
 
     private fun getAuthenticatorInfo(type: String?): AuthenticatorInfo? {
         synchronized(cache) {
-            return if (type == null) null else cache.authenticators.get(type)
+            return if (type == null) null else cache.authenticators[type]
         }
     }
 
@@ -1030,7 +1030,7 @@ class VAccountManagerService : IAccountManager.Stub() {
                         }) != XmlPullParser.END_DOCUMENT && type != XmlPullParser.START_TAG) {
                         // Nothing to do
                     }
-                    if (AccountManager.AUTHENTICATOR_ATTRIBUTES_NAME == parser.getName()) {
+                    if (AccountManager.AUTHENTICATOR_ATTRIBUTES_NAME == parser.name) {
                         val desc: AuthenticatorDescription? = parseAuthenticatorDescription(
                             accountParser.getResources(mContext, info.serviceInfo.applicationInfo),
                             info.serviceInfo.packageName, attributeSet
@@ -1115,7 +1115,7 @@ class VAccountManagerService : IAccountManager.Stub() {
     ) : IAccountAuthenticatorResponse.Stub(), IBinder.DeathRecipient, ServiceConnection {
         val mUserId: Int
         val mAuthenticatorInfo: AuthenticatorInfo
-        private val mStripAuthTokenFromResult: Boolean
+        private val mStripAuthTokenFromResult: Boolean = stripAuthTokenFromResult
         var mNumResults: Int = 0
         var mAuthenticator: IAccountAuthenticator? = null
         private var mResponse: IAccountManagerResponse?
@@ -1129,7 +1129,6 @@ class VAccountManagerService : IAccountManager.Stub() {
 
 
         init {
-            this.mStripAuthTokenFromResult = stripAuthTokenFromResult
             this.mResponse = response
             this.mUserId = userId
             this.mAuthenticatorInfo = info
@@ -1281,11 +1280,10 @@ class VAccountManagerService : IAccountManager.Stub() {
             if (result != null) {
                 intent = result.getParcelable<Intent?>(AccountManager.KEY_INTENT)
             }
-            val response: IAccountManagerResponse?
-            if (mExpectActivityLaunch && result != null && result.containsKey(AccountManager.KEY_INTENT)) {
-                response = mResponse
+            val response = if (mExpectActivityLaunch && result != null && result.containsKey(AccountManager.KEY_INTENT)) {
+                mResponse
             } else {
-                response = this.responseAndClose
+                this.responseAndClose
             }
             if (response != null) {
                 try {
@@ -1329,7 +1327,7 @@ class VAccountManagerService : IAccountManager.Stub() {
         abstract fun run()
 
         fun bind() {
-            Timber.v("initiating bind to authenticator type " + mAuthenticatorInfo.desc.type)
+            Timber.v("initiating bind to authenticator type %s", mAuthenticatorInfo.desc.type)
             val intent = Intent()
             intent.setAction(AccountManager.ACTION_AUTHENTICATOR_INTENT)
             intent.setClassName(
@@ -1339,7 +1337,7 @@ class VAccountManagerService : IAccountManager.Stub() {
             intent.putExtra(INTENT_USER_ID, mUserId)
 
             if (!mContext.bindService(intent, this, Context.BIND_AUTO_CREATE)) {
-                Timber.d("bind attempt failed for " + toDebugString())
+                Timber.d("bind attempt failed for %s", toDebugString())
                 onError(AccountManager.ERROR_CODE_REMOTE_EXCEPTION, "bind failure")
             }
         }
@@ -1391,7 +1389,7 @@ class VAccountManagerService : IAccountManager.Stub() {
         override fun run() {
             mAccountsOfType = getAccounts(mUserId, mAuthenticatorInfo.desc.type)
             // check whether each account matches the requested features
-            mAccountsWithFeatures = ArrayList<Account?>(mAccountsOfType!!.size)
+            mAccountsWithFeatures = ArrayList(mAccountsOfType!!.size)
             mCurrentAccount = 0
 
             checkAccount()
@@ -1445,7 +1443,7 @@ class VAccountManagerService : IAccountManager.Stub() {
                 try {
                     val accounts = arrayOfNulls<Account>(mAccountsWithFeatures!!.size)
                     for (i in accounts.indices) {
-                        accounts[i] = mAccountsWithFeatures!!.get(i)
+                        accounts[i] = mAccountsWithFeatures!![i]
                     }
                         Timber.v(
                             (javaClass.getSimpleName() + " calling onResult() on response "

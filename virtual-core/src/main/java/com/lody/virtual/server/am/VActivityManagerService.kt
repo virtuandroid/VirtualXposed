@@ -1279,7 +1279,10 @@ class VActivityManagerService : IActivityManager.Stub() {
         enforceCallingUser(userId)
         val caller = VBinder.getCallingPackageName()
         val context = VirtualCore.get().context
+        // Prevent user ID spoofing in the intent
+        intent.putExtra(INTENT_USER_ID, userId)
         intent.putExtra(BROADCAST_CALLING_PACKAGE, caller)
+        // TODO use more sophisticated sendBroadcast to retain parameters
         context.sendBroadcast(intent)
         return 0
     }
