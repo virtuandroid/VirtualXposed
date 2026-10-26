@@ -60,15 +60,14 @@ import com.lody.virtual.remote.InstalledAppInfo;
 import com.lody.virtual.remote.PendingResultData;
 import com.lody.virtual.remote.VDeviceInfo;
 import com.lody.virtual.server.interfaces.IUiCallback;
-
-import org.matrix.vector.service.ModuleSettings;
-import org.matrix.vector.service.ModuleStore;
-import org.matrix.vector.service.VectorManagerService;
-
 import com.virtualxposed.hook.PackageID;
 import com.virtualxposed.hook.VHookClient;
 import com.virtualxposed.log.client.LogMessage;
 import com.virtualxposed.log.client.VLoggingClient;
+
+import org.matrix.vector.service.ModuleSettings;
+import org.matrix.vector.service.ModuleStore;
+import org.matrix.vector.service.VectorManagerService;
 
 import java.io.File;
 import java.lang.reflect.Field;
@@ -748,17 +747,13 @@ public final class VClientImpl extends IVClient.Stub {
         ContentResolver resolver = VirtualCore.get().getContext().getContentResolver();
         ContentProviderClient client = null;
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-                client = resolver.acquireUnstableContentProviderClient(authority);
-            } else {
-                client = resolver.acquireContentProviderClient(authority);
-            }
+            client = resolver.acquireUnstableContentProviderClient(authority);
         } catch (Throwable e) {
             VLog.e(TAG, "", e);
         }
         if (client != null) {
             provider = mirror.android.content.ContentProviderClient.mContentProvider.get(client);
-            client.release();
+            client.close();
         }
         return provider != null ? provider.asBinder() : null;
     }

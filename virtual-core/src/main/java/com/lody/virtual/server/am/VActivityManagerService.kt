@@ -259,18 +259,19 @@ class VActivityManagerService : IActivityManager.Stub() {
 
     override fun acquireProviderClient(userId: Int, info: ProviderInfo): IBinder? {
         enforceCallingUser(userId)
-        val callerApp: ProcessRecord?
-        synchronized(mPidsSelfLocked) {
-            callerApp = findProcessLocked(VBinder.getCallingPid())
-        }
+        val component = ComponentName(info.packageName, info.name)
+        // We cannot trust any client input, therefore we retrieve our own provider
+        // Notably this will also ensure that the provider is visible to the client (exported)
+        val trustedProviderInfo = VPackageManagerService.get().getProviderInfo(component, 0, userId) ?: return null
+
         val processName = info.processName
         val r: ProcessRecord?
         synchronized(this) {
-            r = startProcessIfNeedLocked(processName, userId, info.packageName)
+            r = startProcessIfNeedLocked(processName, userId, trustedProviderInfo.packageName)
         }
         if (r != null && r.client.asBinder().pingBinder()) {
             try {
-                return r.client.acquireProviderClient(info)
+                return r.client.acquireProviderClient(trustedProviderInfo)
             } catch (e: RemoteException) {
                 Timber.e(e)
             }
