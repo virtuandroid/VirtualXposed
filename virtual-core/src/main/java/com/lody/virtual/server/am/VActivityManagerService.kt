@@ -122,6 +122,12 @@ class VActivityManagerService : IActivityManager.Stub() {
     ): Int {
         enforceNotIsolatedCaller("startActivity")
         enforceCallingUser(userId)
+        val callingPackage = VBinder.getCallingPackageName()
+        // TODO Permissions
+        // TODO missing check for Intent component
+        if (callingPackage != info.packageName && !info.exported) {
+            throw SecurityException("Cannot start non-exported activity.")
+        }
 
         synchronized(this) {
             return mMainStack.startActivityLocked(

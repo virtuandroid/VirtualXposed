@@ -14,7 +14,7 @@ import java.util.List;
  */
 
 class TaskRecord {
-    public final List<ActivityRecord> activities = Collections.synchronizedList(new ArrayList<ActivityRecord>());
+    public final List<ActivityRecord> activities = Collections.synchronizedList(new ArrayList<>());
     public int taskId;
     public int userId;
     public String affinity;
@@ -29,7 +29,7 @@ class TaskRecord {
 
     AppTaskInfo getAppTaskInfo() {
         int len = activities.size();
-        if (len <= 0) {
+        if (len == 0) {
             return null;
         }
         ComponentName top = activities.get(len - 1).component;
@@ -39,7 +39,10 @@ class TaskRecord {
     public boolean isFinishing() {
         boolean allFinish = true;
         for (ActivityRecord r : activities) {
-            if (!r.marked) allFinish = false;
+            if (!r.marked) {
+                allFinish = false;
+                break;
+            }
         }
         return allFinish;
     }
