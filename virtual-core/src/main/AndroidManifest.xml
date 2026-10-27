@@ -242,7 +242,8 @@
         <service
             android:name=".server.mediastore.MediaProviderService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:process="@string/engine_process_name" />
         <service
             android:name=".client.stub.DaemonService"
             android:foregroundServiceType="specialUse"

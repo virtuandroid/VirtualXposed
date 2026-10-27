@@ -42,7 +42,6 @@ import com.lody.virtual.client.ipc.ProviderCall
 import com.lody.virtual.client.ipc.VNotificationManager
 import com.lody.virtual.client.stub.StubCP.Companion.VA_INIT_PROCESS_METHOD
 import com.lody.virtual.client.stub.VASettings
-import com.lody.virtual.helper.collection.SparseArray
 import com.lody.virtual.helper.compat.ActivityManagerCompat
 import com.lody.virtual.helper.compat.ApplicationThreadCompat
 import com.lody.virtual.helper.compat.BundleCompat
@@ -76,16 +75,24 @@ import com.virtualxposed.log.client.LogMessage.BroadCastReceived
 import com.virtualxposed.log.client.VLoggingClient
 import mirror.android.app.IServiceConnectionO
 import timber.log.Timber
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
 /**
  * @author Lody
  */
 class VActivityManagerService : IActivityManager.Stub() {
-    private val mPidsSelfLocked = SparseArray<ProcessRecord>()
-    private val mMainStack = ActivityStack(this)
+    private data class ProcessIdentifier(val name: String?, val vuid: Int)
+    /** Locks both mPidsSelfLocked and mProcessNames */
+    private val pidLock = Any()
+
+    /** Single source of truth. Maps PID to ProcessRecord */
+    private val mPidsSelfLocked = ConcurrentHashMap<Int, ProcessRecord>()
+
+    /** Maps ProcessIdentifier to PID */
+    private val mProcessNames = ConcurrentHashMap<ProcessIdentifier, Int>()
     private val mHistory: MutableSet<ServiceRecord> = HashSet()
-    private val mProcessNames = ProcessMap<ProcessRecord?>()
+    private val mMainStack = ActivityStack(this)
     private val mPendingIntents = PendingIntents()
     private val am = VirtualCore.get().context
         .getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -154,7 +161,8 @@ class VActivityManagerService : IActivityManager.Stub() {
 
         synchronized(this) {
             val infos = intents.map { intent ->
-                VirtualCore.get().resolveActivityInfo(intent, userId) ?: return ActivityManagerCompat.START_INTENT_NOT_RESOLVED
+                VirtualCore.get().resolveActivityInfo(intent, userId)
+                    ?: return ActivityManagerCompat.START_INTENT_NOT_RESOLVED
             }.toTypedArray()
 
             return mMainStack.startActivitiesLocked(
@@ -262,7 +270,8 @@ class VActivityManagerService : IActivityManager.Stub() {
         val component = ComponentName(info.packageName, info.name)
         // We cannot trust any client input, therefore we retrieve our own provider
         // Notably this will also ensure that the provider is visible to the client (exported)
-        val trustedProviderInfo = VPackageManagerService.get().getProviderInfo(component, 0, userId) ?: return null
+        val trustedProviderInfo =
+            VPackageManagerService.get().getProviderInfo(component, 0, userId) ?: return null
 
         val processName = info.processName
         val r: ProcessRecord?
@@ -438,7 +447,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     private fun stopServiceCommon(r: ServiceRecord, className: ComponentName?) {
         for (bindRecord in r.bindings) {
             for (connection in bindRecord.connections) {
-                // Report to all of the connections that the service is no longer
+                // Report to all the connections that the service is no longer
                 // available.
                 try {
                     if (Build.VERSION.SDK_INT >= 26) {
@@ -824,17 +833,19 @@ class VActivityManagerService : IActivityManager.Stub() {
         app.client = client
         app.appThread = thread
         app.pid = pid
-        synchronized(mProcessNames) {
-            mProcessNames.put(app.processName, app.vuid, app)
-            mPidsSelfLocked.put(app.pid, app)
+
+        synchronized(pidLock) {
+            mProcessNames[ProcessIdentifier(app.processName, app.vuid)] = pid
+            mPidsSelfLocked[pid] = app
         }
     }
 
     private fun onProcessDead(record: ProcessRecord) {
-        synchronized(mProcessNames) {
-            mProcessNames.remove(record.processName, record.vuid)
-            mPidsSelfLocked.remove(record.pid)
+        synchronized(pidLock) {
+            mProcessNames.remove(ProcessIdentifier(record.processName, record.vuid), record.pid)
+            mPidsSelfLocked.remove(record.pid, record)
         }
+
         processDead(record)
         record.lock.open()
 
@@ -849,7 +860,10 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun getFreeStubCount(): Int {
-        return VASettings.STUB_COUNT - mPidsSelfLocked.size()
+        val currentProcesses = synchronized(pidLock) {
+            mPidsSelfLocked.size
+        }
+        return VASettings.STUB_COUNT - currentProcesses
     }
 
     override fun initProcess(packageName: String?, processName: String?, userId: Int): Int {
@@ -883,7 +897,7 @@ class VActivityManagerService : IActivityManager.Stub() {
             VAppManagerService.get().savePersistenceData()
         }
         val uid = VUserHandle.getUid(userId, ps.appId)
-        var app = mProcessNames.get(processName, uid)
+        var app = getProcessByName(processName, uid)
         if (app != null && app.client.asBinder().pingBinder()) {
             return app
         }
@@ -907,17 +921,27 @@ class VActivityManagerService : IActivityManager.Stub() {
         sendBroadcastAsUser(intent, null)
     }
 
-
+    // TODO prevent race conditions safety issues in process creation/death
     override fun getUidByPid(pid: Int): Int {
-        synchronized(mPidsSelfLocked) {
-            val r = findProcessLocked(pid)
-            if (r != null) {
-                return r.vuid
-            }
+        if (pid == 0) {
+            // TODO ensure invalid UIDs are handled properly
+            return -1 // INVALID_UID
         }
-        // If the PID cannot be found its assumed to be from the engine process or the main process
-        // TODO this should be a more rigorous check
-        return Process.myUid()
+        val myUid = Process.myUid()
+        val r = findProcessLocked(pid)
+        // TODO ensure that myUid does not collide with any vuid
+        if (myUid == r?.vuid) {
+            throw SecurityException("A guest app should never have the same VUID as the server process")
+        }
+        if (r != null) {
+            return r.vuid
+        }
+        if (pid == mainPid || pid == Process.myPid()) {
+            return myUid
+        }
+        return -1 // INVALID_UID
+        // TODO check what happens to forked processes which may bypass mPidsSelfLocked
+        // throw IllegalStateException("No UID found. This should not happen!")
     }
 
     private fun performStartProcessLocked(
@@ -946,21 +970,19 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     private fun queryFreeStubProcessLocked(): Int {
-        for (vpid in 0..<VASettings.STUB_COUNT) {
-            var N = mPidsSelfLocked.size()
-            var using = false
-            while (N-- > 0) {
-                val r = mPidsSelfLocked.valueAt(N)
-                if (r.vpid == vpid) {
-                    using = true
-                    break
+        // Find first unused vpid in the range 0-49
+        synchronized(pidLock) {
+            repeat(VASettings.STUB_COUNT) { vpid ->
+                val using = mPidsSelfLocked.values.any { r ->
+                    r.vpid == vpid
+                }
+
+                if (!using) {
+                    return vpid
                 }
             }
-            if (using) {
-                continue
-            }
-            return vpid
         }
+
         return -1
     }
 
@@ -969,38 +991,37 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun isAppPid(pid: Int): Boolean {
-        synchronized(mPidsSelfLocked) {
-            return findProcessLocked(pid) != null
-        }
+        return findProcessLocked(pid) != null
     }
 
     override fun getAppProcessName(pid: Int): String? {
-        synchronized(mPidsSelfLocked) {
-            val r = mPidsSelfLocked.get(pid)
-            if (r != null) {
-                return r.processName
-            }
+        synchronized(pidLock) {
+            return mPidsSelfLocked[pid]?.processName
         }
-        return null
+    }
+
+    fun getProcessByName(name: String?, vuid: Int): ProcessRecord? {
+        synchronized(pidLock) {
+            val pid = mProcessNames[ProcessIdentifier(name, vuid)] ?: return null
+            return mPidsSelfLocked[pid]
+        }
     }
 
     override fun getProcessPkgList(pid: Int): List<String?> {
-        synchronized(mPidsSelfLocked) {
-            val r = mPidsSelfLocked.get(pid)
-            if (r != null) {
-                return ArrayList(r.pkgList)
-            }
+        synchronized(pidLock) {
+            return mPidsSelfLocked[pid]?.pkgList?.toList() ?: emptyList()
         }
-        return listOf()
     }
 
     override fun killAllApps() {
         val caller = VBinder.getCallingUid()
-        synchronized(mPidsSelfLocked) {
-            for (i in 0..<mPidsSelfLocked.size()) {
-                val r = mPidsSelfLocked.valueAt(i)
-                if (r.vuid == caller) {
-                    Process.killProcess(r.pid)
+        // TODO Make a helper function to check system pid or engine pid
+        val isSystem = VBinder.getCallingPid() == systemPid
+
+        synchronized(pidLock) {
+            mPidsSelfLocked.values.forEach {
+                if (isSystem || it.vuid == caller) {
+                    Process.killProcess(it.pid)
                 }
             }
         }
@@ -1009,22 +1030,13 @@ class VActivityManagerService : IActivityManager.Stub() {
     override fun killAppByPkg(pkg: String?, userId: Int) {
         enforceCallingUser(userId)
         assertPackageMatchesCallingUid(pkg)
+        val uid = VBinder.getCallingUid()
+        val isSystem = VBinder.getCallingPid() == systemPid
 
-        synchronized(mProcessNames) {
-            val map = mProcessNames.getMap()
-            var N: Int = map.size
-            while (N-- > 0) {
-                val uids = map.valueAt(N)
-                for (i in 0..<uids.size()) {
-                    val r = uids.valueAt(i)
-                    if (userId != VUserHandle.USER_ALL) {
-                        if (r?.userId != userId) {
-                            continue
-                        }
-                    }
-                    if (r?.pkgList?.contains(pkg) == true) {
-                        Process.killProcess(r.pid)
-                    }
+        synchronized(pidLock) {
+            mProcessNames.entries.forEach { (process, pid) ->
+                if (process.vuid == uid || isSystem) {
+                    Process.killProcess(pid)
                 }
             }
         }
@@ -1034,26 +1046,19 @@ class VActivityManagerService : IActivityManager.Stub() {
         enforceCallingUser(userId)
         assertPackageMatchesCallingUid(packageName)
 
-        var running = false
-        synchronized(mPidsSelfLocked) {
-            var N = mPidsSelfLocked.size()
-            while (N-- > 0) {
-                val r = mPidsSelfLocked.valueAt(N)
-                if (r.userId == userId && r.info.packageName == packageName) {
-                    running = true
-                    break
-                }
+        synchronized(pidLock) {
+            return mPidsSelfLocked.values.any { r ->
+                r.userId == userId && r.info.packageName == packageName
             }
-            return running
         }
     }
 
     override fun killApplicationProcess(processName: String?, uid: Int) {
         enforceCallingUid(uid)
-        synchronized(mProcessNames) {
-            val r = mProcessNames.get(processName, uid)
-            if (r != null) {
-                Process.killProcess(r.pid)
+        synchronized(pidLock) {
+            val pid = mProcessNames[ProcessIdentifier(processName, uid)]
+            if (pid != null) {
+                Process.killProcess(pid)
             }
         }
     }
@@ -1068,12 +1073,8 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun getInitialPackage(pid: Int): String? {
-        synchronized(mPidsSelfLocked) {
-            val r = mPidsSelfLocked.get(pid)
-            if (r != null) {
-                return r.info.packageName
-            }
-            return null
+        synchronized(pidLock) {
+            return mPidsSelfLocked[pid]?.info?.packageName
         }
     }
 
@@ -1082,8 +1083,9 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun appDoneExecuting() {
-        synchronized(mPidsSelfLocked) {
-            val r = mPidsSelfLocked.get(VBinder.getCallingPid())
+        val caller = VBinder.getCallingPid()
+        synchronized(pidLock) {
+            val r = mPidsSelfLocked[caller]
             if (r != null) {
                 r.doneExecuting = true
                 r.lock.open()
@@ -1091,35 +1093,21 @@ class VActivityManagerService : IActivityManager.Stub() {
         }
     }
 
-
-    /**
-     * Should guard by [mPidsSelfLocked]
-     * 
-     * @param pid pid
-     */
     private fun findProcessLocked(pid: Int): ProcessRecord? {
-        return mPidsSelfLocked.get(pid)
-    }
-
-    /**
-     * Should guard by [mProcessNames]
-     * 
-     * @param uid vuid
-     */
-    private fun findProcessLocked(processName: String?, uid: Int): ProcessRecord? {
-        return mProcessNames.get(processName, uid)
+        synchronized(pidLock) {
+            return mPidsSelfLocked[pid]
+        }
     }
 
     fun stopUser(userHandle: Int, stub: IStopUserCallback.Stub): Int {
-        synchronized(mPidsSelfLocked) {
-            var N = mPidsSelfLocked.size()
-            while (N-- > 0) {
-                val r = mPidsSelfLocked.valueAt(N)
+        synchronized(pidLock) {
+            mPidsSelfLocked.values.forEach { r ->
                 if (r.userId == userHandle) {
                     Process.killProcess(r.pid)
                 }
             }
         }
+
         try {
             stub.userStopped(userHandle)
         } catch (e: RemoteException) {
@@ -1208,25 +1196,23 @@ class VActivityManagerService : IActivityManager.Stub() {
         vuid: Int, info: ActivityInfo, intent: Intent?,
         result: PendingResultData?
     ) {
-        synchronized(this) {
-            var r = findProcessLocked(info.processName, vuid)
-            if (isStartProcessForBroadcast(
-                    info.processName,
-                    info.packageName
-                ) && r == null
-            ) {
-                r = startProcessIfNeedLocked(
-                    info.processName,
-                    VUserHandle.getUserId(vuid),
-                    info.packageName
-                )
-            }
-            if (r?.appThread != null) {
-                performScheduleReceiver(
-                    r.client, vuid, info, intent,
-                    result
-                )
-            }
+        var r = getProcessByName(info.processName, vuid)
+        if (isStartProcessForBroadcast(
+                info.processName,
+                info.packageName
+            ) && r == null
+        ) {
+            r = startProcessIfNeedLocked(
+                info.processName,
+                VUserHandle.getUserId(vuid),
+                info.packageName
+            )
+        }
+        if (r?.appThread != null) {
+            performScheduleReceiver(
+                r.client, vuid, info, intent,
+                result
+            )
         }
     }
 
@@ -1295,6 +1281,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     companion object {
         private const val BROADCAST_NOT_STARTED_PKG = false
 
+        private var mainPid: Int? = null
         private val sService = AtomicReference<VActivityManagerService>()
         private val TAG: String = VActivityManagerService::class.java.getSimpleName()
 
@@ -1306,6 +1293,11 @@ class VActivityManagerService : IActivityManager.Stub() {
         @JvmStatic
         fun systemReady(context: Context) {
             VActivityManagerService().onCreate(context)
+        }
+
+        @JvmStatic
+        fun setMainPid(pid: Int) {
+            mainPid = pid
         }
 
         private fun resolveServiceInfo(service: Intent?, userId: Int): ServiceInfo? {

@@ -11,6 +11,7 @@
         android:name=".XApp"
         android:debuggable="true"
         android:allowBackup="true"
+        android:process="@string/main_process_name"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/vxp"
         android:theme="@style/LauncherTheme"

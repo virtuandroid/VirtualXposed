@@ -8,14 +8,22 @@ import com.lody.virtual.os.VUserHandle
 import com.lody.virtual.server.permission.VPermissionManager
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
-import kotlin.jvm.Throws
 
 object SecurityUtils {
+    @Throws
+    private fun getCallingUidSafe(): Int {
+        val uid = VBinder.getCallingUid()
+        if (uid == -1) {
+            throw SecurityException("Cannot get calling UID")
+        }
+        return uid
+    }
+
     //https://android.googlesource.com/platform/frameworks/base/+/94b4c163b7dfe5ce3607f7bb8456f9573f7de57d/services/core/java/com/android/server/am/ActivityManagerService.java#3607
     @JvmStatic
     @Throws(SecurityException::class)
     fun enforceNotIsolatedCaller(caller: String) {
-        if (VUserHandle.isIsolated(VBinder.getCallingUid())) {
+        if (VUserHandle.isIsolated(getCallingUidSafe())) {
             throw SecurityException("Isolated process not allowed to call $caller")
         }
     }
@@ -38,6 +46,7 @@ object SecurityUtils {
         contract {
             returns() implies (packageName != null)
         }
+        // This is important to keep, since callingPackage can be null when getCallingPid is 0
         if (packageName == null) {
             throw IllegalArgumentException("callingPackage cannot be null")
         }
@@ -60,21 +69,21 @@ object SecurityUtils {
     @JvmStatic
     @Throws(SecurityException::class)
     fun enforceCallingPermission(permission: String, func: String) {
-        val uid = VBinder.getCallingUid()
+        val uid = getCallingUidSafe()
         val permission = VPermissionManager.get().checkPermission(permission, uid)
         if (permission == PackageManager.PERMISSION_GRANTED) {
             return
         }
 
         val msg =
-            "Permission Denial: $func from pid=${VBinder.getCallingPid()}, uid=${VBinder.getCallingUid()} requires $permission"
+            "Permission Denial: $func from pid=${VBinder.getCallingPid()}, uid=${getCallingUidSafe()} requires $permission"
         throw SecurityException(msg)
     }
 
     @JvmStatic
     @Throws(SecurityException::class)
     fun enforceCallingUid(uid: Int) {
-        if (VBinder.getCallingUid() != uid && uid != VActivityManager.get().systemPid) {
+        if (getCallingUidSafe() != uid && uid != VActivityManager.get().systemPid) {
             throw SecurityException("Forbidden calling UID.")
         }
     }
@@ -82,7 +91,7 @@ object SecurityUtils {
     @JvmStatic
     @Throws(SecurityException::class)
     fun enforceCallingUser(userId: Int) {
-        if (isCrossUser(VBinder.getCallingUid(), userId)) {
+        if (isCrossUser(getCallingUidSafe(), userId)) {
             throw SecurityException("Forbidden cross-user interaction.")
         }
     }
@@ -90,7 +99,7 @@ object SecurityUtils {
     @JvmStatic
     @Throws(SecurityException::class)
     fun assertSystemCaller() {
-        val callingUid = VBinder.getCallingUid()
+        val callingUid = getCallingUidSafe()
         if (callingUid != VActivityManager.get().systemPid) {
             throw SecurityException("Only callable by the system.")
         }

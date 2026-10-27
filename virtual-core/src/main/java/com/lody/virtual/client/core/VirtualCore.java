@@ -58,6 +58,7 @@ import com.lody.virtual.os.VUserHandle;
 import com.lody.virtual.remote.InstallResult;
 import com.lody.virtual.remote.InstalledAppInfo;
 import com.lody.virtual.server.IAppManager;
+import com.lody.virtual.server.am.VActivityManagerService;
 import com.lody.virtual.server.interfaces.IAppRequestListener;
 import com.lody.virtual.server.interfaces.IPackageObserver;
 import com.lody.virtual.server.interfaces.IUiCallback;
@@ -214,6 +215,18 @@ public final class VirtualCore {
             unHookPackageManager = context.getPackageManager();
             hostPkgInfo = unHookPackageManager.getPackageInfo(packageName, PackageManager.GET_PROVIDERS);
             detectProcessType();
+
+            // We want to know which the main process is before guest apps can be started
+            // This is only relevant for the server process, since the host pid is used for security verification
+            if (VirtualCore.get().isServerProcess()) {
+                ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+                for (ActivityManager.RunningAppProcessInfo info : am.getRunningAppProcesses()) {
+                    if (info.processName.equals(VirtualCore.get().getMainProcessName())) {
+                        VActivityManagerService.setMainPid(info.pid);
+                    }
+                }
+            }
+
             InvocationStubManager invocationStubManager = InvocationStubManager.getInstance();
             invocationStubManager.init();
             invocationStubManager.injectAll();
