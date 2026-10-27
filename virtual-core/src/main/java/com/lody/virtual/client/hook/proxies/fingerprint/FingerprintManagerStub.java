@@ -4,6 +4,8 @@ import android.annotation.TargetApi;
 import android.content.Context;
 import android.os.Build;
 
+import androidx.core.content.ContextCompat;
+
 import com.lody.virtual.client.hook.base.BinderInvocationProxy;
 import com.lody.virtual.client.hook.base.ReplaceLastPkgMethodProxy;
 
@@ -16,7 +18,8 @@ import mirror.android.hardware.fingerprint.IFingerprintService;
 @TargetApi(Build.VERSION_CODES.M)
 public class FingerprintManagerStub extends BinderInvocationProxy {
     public FingerprintManagerStub() {
-        super(IFingerprintService.Stub.asInterface, Context.FINGERPRINT_SERVICE);
+        // Context.FINGERPRINT_SERVICE
+        super(IFingerprintService.Stub.asInterface, "fingerprint");
     }
 
     @Override

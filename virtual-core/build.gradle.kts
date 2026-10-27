@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.lody.virtual"
-    compileSdk = 35
+    compileSdk = 37
     version = "1.0"
 
     defaultConfig {

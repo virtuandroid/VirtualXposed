@@ -138,7 +138,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
      * as well. A new TaskRecord will be recreated in `onActivityCreated`
      */
     private fun optimizeTasksLocked() {
-        val recentTask = mAM.appTasks.map { it.taskInfo.id }
+        val recentTask = mAM.appTasks.mapNotNull { it.taskInfo?.id }
 
         mHistory.entries.removeAll { (_, task) ->
             task.taskId !in recentTask
@@ -407,8 +407,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
         task: TaskRecord, intent: Intent, info: ActivityInfo, resultWho: String?,
         requestCode: Int, options: Bundle?
     ) {
-        val top =
-            if (task.activities.isEmpty()) null else task.activities[task.activities.size - 1]
+        val top = task.activities.lastOrNull()
         if (top != null) {
             if (startActivityProcess(task.userId, top, intent, info) != null) {
                 realStartActivityLocked(top.token, intent, resultWho, requestCode, options)
@@ -594,11 +593,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
     fun onActivityDestroyed(userId: Int, token: IBinder?): ActivityRecord? {
         optimizeTasksLocked()
         val r = findActivityByToken(userId, token)
-        if (r != null) {
-            synchronized(r.task.activities) {
-                r.task.activities.remove(r)
-            }
-        }
+        r?.task?.activities?.remove(r)
         return r
     }
 
@@ -623,11 +618,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
     }
 
     fun getPackageForToken(userId: Int, token: IBinder?): String? {
-        val r = findActivityByToken(userId, token)
-        if (r != null) {
-            return r.component.packageName
-        }
-        return null
+        return findActivityByToken(userId, token)?.component?.packageName
     }
 
     fun getCallingActivity(userId: Int, token: IBinder?): ComponentName? {
@@ -647,19 +638,11 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
     }
 
     fun getTaskInfo(taskId: Int): AppTaskInfo? {
-        val task = mHistory[taskId]
-        if (task != null) {
-            return task.getAppTaskInfo()
-        }
-        return null
+        return mHistory[taskId]?.getAppTaskInfo()
     }
 
     fun getActivityClassForToken(userId: Int, token: IBinder?): ComponentName? {
-        val r = findActivityByToken(userId, token)
-        if (r != null) {
-            return r.component
-        }
-        return null
+        return findActivityByToken(userId, token)?.component
     }
 
     private enum class ClearTarget(val deliverIntent: Boolean = false) {
