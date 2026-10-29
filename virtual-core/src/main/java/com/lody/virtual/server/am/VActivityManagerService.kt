@@ -72,7 +72,6 @@ import com.lody.virtual.server.security.SecurityUtils.enforceNotIsolatedCaller
 import com.virtualxposed.log.client.LogMessage
 import com.virtualxposed.log.client.LogMessage.AppDeath
 import com.virtualxposed.log.client.LogMessage.BroadCastReceived
-import com.virtualxposed.log.client.VLoggingClient
 import mirror.android.app.IServiceConnectionO
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
@@ -83,6 +82,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class VActivityManagerService : IActivityManager.Stub() {
     private data class ProcessIdentifier(val name: String?, val vuid: Int)
+
     /** Locks both mPidsSelfLocked and mProcessNames */
     private val pidLock = Any()
 
@@ -1151,6 +1151,8 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     fun handleStaticBroadcast(
+        callingPackage: String,
+        callingUserId: Int,
         appId: Int, info: ActivityInfo, intent: Intent,
         result: PendingResultData?
     ): Boolean {
@@ -1165,10 +1167,20 @@ class VActivityManagerService : IActivityManager.Stub() {
             return false
         }
         val vuid = VUserHandle.getUid(userId, appId)
-        return handleUserBroadcast(vuid, info, component, realIntent, result)
+        return handleUserBroadcast(
+            callingPackage,
+            callingUserId,
+            vuid,
+            info,
+            component,
+            realIntent,
+            result
+        )
     }
 
     private fun handleUserBroadcast(
+        callingPackage: String,
+        callingUserId: Int,
         vuid: Int,
         info: ActivityInfo,
         component: ComponentName?,
@@ -1185,8 +1197,13 @@ class VActivityManagerService : IActivityManager.Stub() {
             realIntent.setAction(originAction)
         }
 
-        // TODO add caller
-        VLoggingClient.get().log(BroadCastReceived(realIntent.action ?: "", info.packageName))
+        val message = BroadCastReceived(realIntent.action ?: "", info.packageName)
+        VLoggingManagerService.get().log(
+            LogMessageHolder.Builder(message)
+                .setPackageName(callingPackage)
+                .setUserId(callingUserId)
+                .build()
+        )
 
         handleStaticBroadcastAsUser(vuid, info, realIntent, result)
         return true

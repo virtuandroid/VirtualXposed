@@ -14,11 +14,13 @@ import android.os.Process
 import androidx.core.content.ContextCompat
 import com.lody.virtual.IntentHelper.BROADCAST_CALLING_PACKAGE
 import com.lody.virtual.IntentHelper.BROADCAST_SPECIFIC_PACKAGE
+import com.lody.virtual.IntentHelper.INTENT_USER_ID
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.env.SpecialComponentList
 import com.lody.virtual.helper.collection.ArrayMap
 import com.lody.virtual.helper.utils.VLog
 import com.lody.virtual.os.VBinder
+import com.lody.virtual.os.VUserHandle
 import com.lody.virtual.remote.PendingResultData
 import com.lody.virtual.server.pm.PackageSetting
 import com.lody.virtual.server.pm.VAppManagerService
@@ -217,12 +219,14 @@ class BroadcastSystem private constructor(
                 return
             }
             // This cannot be spoofed since the caller is trusted.
-            val callingPackage = intent.getStringExtra(BROADCAST_CALLING_PACKAGE)
-            // Disallow private receivers
-            if (callingPackage != info.packageName && !info.exported) {
+            val callingPackage = intent.getStringExtra(BROADCAST_CALLING_PACKAGE) ?: return
+            val callingUserId = intent.getIntExtra(INTENT_USER_ID, -1).takeIf { it >= 0 } ?: return
+            val infoUserId = VUserHandle.getUserId(info.applicationInfo.uid)
+            // Disallow private receivers and cross-user sending
+            if ((callingPackage != info.packageName && !info.exported) || infoUserId != callingUserId) {
+                info.applicationInfo.uid
                 Timber.i("Blocked package $callingPackage from sending a broadcast to ${info.name}")
                 // TODO add permission checks
-                // TODO add stricter user ID tests
                 return
             }
             if (mApp.isBooting) {
@@ -236,7 +240,15 @@ class BroadcastSystem private constructor(
                 return
             }
             val result = goAsync()
-            if (!mAMS.handleStaticBroadcast(appId, info, intent, PendingResultData(result))) {
+            if (!mAMS.handleStaticBroadcast(
+                    callingPackage,
+                    callingUserId,
+                    appId,
+                    info,
+                    intent,
+                    PendingResultData(result)
+                )
+            ) {
                 result.finish()
             }
         }
