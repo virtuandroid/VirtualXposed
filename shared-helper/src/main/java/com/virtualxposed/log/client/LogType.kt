@@ -18,6 +18,8 @@ enum class LogType : Parcelable {
     BindService,
     GetService,
     GetProvider,
+    GetActivity,
+    GetReceiver,
     Exec,
     SocketConnect,
     AppInstall,

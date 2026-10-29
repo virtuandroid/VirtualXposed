@@ -57,6 +57,8 @@ sealed class LogMessage : Parcelable {
                         LogType.FingerprintChange -> FingerprintChange(parcel)
                         LogType.FileIdentical -> FileIdentical(parcel)
                         LogType.HookArgumentsRewrite -> HookArgumentsRewrite(parcel)
+                        LogType.GetReceiver -> GetReceiver(parcel)
+                        LogType.GetActivity -> GetActivity(parcel)
                         null -> null
                     }
                 }.getOrNull()
@@ -343,6 +345,51 @@ sealed class LogMessage : Parcelable {
     ) : LogMessage() {
         override val logType = LogType.GetProvider
 
+
+        constructor(parcel: Parcel) : this(
+            parcel.readString()!!,
+            parcel.readString()!!,
+            parcel.readInt() == 1
+        )
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(packageName)
+            parcel.writeString(componentName)
+            parcel.writeInt(if (isExported) 1 else 0)
+        }
+    }
+
+    @Serializable
+    data class GetActivity(
+        val packageName: String,
+        val componentName: String,
+        val isExported: Boolean,
+    ) : LogMessage() {
+        override val logType = LogType.GetActivity
+
+        constructor(parcel: Parcel) : this(
+            parcel.readString()!!,
+            parcel.readString()!!,
+            parcel.readInt() == 1
+        )
+
+        override fun writeToParcel(parcel: Parcel, flags: Int) {
+            super.writeToParcel(parcel, flags)
+            parcel.writeString(packageName)
+            parcel.writeString(componentName)
+            parcel.writeInt(if (isExported) 1 else 0)
+        }
+    }
+
+
+    @Serializable
+    data class GetReceiver(
+        val packageName: String,
+        val componentName: String,
+        val isExported: Boolean,
+    ) : LogMessage() {
+        override val logType = LogType.GetReceiver
 
         constructor(parcel: Parcel) : this(
             parcel.readString()!!,

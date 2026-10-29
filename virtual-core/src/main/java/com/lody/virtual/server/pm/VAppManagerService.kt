@@ -465,7 +465,7 @@ class VAppManagerService : IAppManager.Stub() {
         return IntArray(0)
     }
 
-    override fun getInstalledApps(flags: Int): List<InstalledAppInfo?> {
+    override fun getInstalledApps(flags: Int): List<InstalledAppInfo> {
         // TODO implement scoping
         return PackageCacheManager.PACKAGE_CACHE.values.mapNotNull { p ->
             val setting = p.mExtras
@@ -473,9 +473,9 @@ class VAppManagerService : IAppManager.Stub() {
         }
     }
 
-    override fun getInstalledAppsAsUser(userId: Int, flags: Int): MutableList<InstalledAppInfo?> {
+    override fun getInstalledAppsAsUser(userId: Int, flags: Int): List<InstalledAppInfo> {
         enforceCallingUser(userId)
-        val infoList: MutableList<InstalledAppInfo?> =
+        val infoList: MutableList<InstalledAppInfo> =
             ArrayList(installedAppCount)
         for (p in PackageCacheManager.PACKAGE_CACHE.values) {
             val setting = p.mExtras as PackageSetting

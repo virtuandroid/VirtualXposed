@@ -87,6 +87,7 @@ class LogMessageHolder private constructor(
                     !isSystem && !isBundledCode
                 }
                 // Apps should never access each others non-exported services, it breaks the Android Sandbox
+                // TODO Add permission checks?
                 is LogMessage.GetService -> {
                     logMessage.packageName != packageName && !logMessage.isExported
                 }
@@ -96,6 +97,14 @@ class LogMessageHolder private constructor(
                 }
 
                 is LogMessage.GetProvider -> {
+                    logMessage.packageName != packageName && !logMessage.isExported
+                }
+
+                is LogMessage.GetActivity -> {
+                    logMessage.packageName != packageName && !logMessage.isExported
+                }
+
+                is LogMessage.GetReceiver -> {
                     logMessage.packageName != packageName && !logMessage.isExported
                 }
 

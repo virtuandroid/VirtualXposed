@@ -244,7 +244,14 @@ class VPackageManagerService : IPackageManager.Stub() {
                         ps.readUserState(userId),
                         userId
                     )
-                    // TODO Log non-exported activities
+
+                    val logMessage: LogMessage = LogMessage.GetActivity(
+                        component.packageName,
+                        component.className,
+                        activityInfo.exported
+                    )
+                    val holder = LogMessageHolder.Builder(logMessage).build()
+                    VLoggingManagerService.get().log(holder)
 
                     if (!activityInfo.exported && callingPackage != p.packageName) {
                         throw SecurityException("Unable to access non-exported activity in " + p.packageName + " from " + callingPackage)
@@ -297,7 +304,13 @@ class VPackageManagerService : IPackageManager.Stub() {
                         userId
                     )
 
-                    // TODO Log receivers
+                    val logMessage: LogMessage = LogMessage.GetReceiver(
+                        component.packageName,
+                        component.className,
+                        receiverInfo.exported
+                    )
+                    val holder = LogMessageHolder.Builder(logMessage).build()
+                    VLoggingManagerService.get().log(holder)
 
                     if (!receiverInfo.exported && callingPackage != p.packageName) {
                         throw SecurityException("Unable to access non-exported receiver in " + p.packageName + " from " + callingPackage)

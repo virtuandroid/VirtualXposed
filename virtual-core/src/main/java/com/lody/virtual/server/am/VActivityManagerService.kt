@@ -727,15 +727,13 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     private fun cancelNotification(userId: Int, id: Int, pkg: String?) {
-        var id = id
-        id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
+        val id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
         val tag = VNotificationManager.get().dealNotificationTag(id, pkg, null, userId)
         nm.cancel(tag, id)
     }
 
     private fun postNotification(userId: Int, id: Int, pkg: String?, notification: Notification?) {
-        var id = id
-        id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
+        val id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
         val tag = VNotificationManager.get().dealNotificationTag(id, pkg, null, userId)
         //        VNotificationManager.get().dealNotification(id, notification, pkg);
         VNotificationManager.get().addNotification(id, tag, pkg, userId)
@@ -1030,6 +1028,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     override fun killAppByPkg(pkg: String?, userId: Int) {
         enforceCallingUser(userId)
         assertPackageMatchesCallingUid(pkg)
+
         val uid = VBinder.getCallingUid()
         val isSystem = VBinder.getCallingPid() == systemPid
 
@@ -1186,7 +1185,8 @@ class VActivityManagerService : IActivityManager.Stub() {
             realIntent.setAction(originAction)
         }
 
-        VLoggingClient.get().log(BroadCastReceived(realIntent.action!!, info.packageName))
+        // TODO add caller
+        VLoggingClient.get().log(BroadCastReceived(realIntent.action ?: "", info.packageName))
 
         handleStaticBroadcastAsUser(vuid, info, realIntent, result)
         return true
