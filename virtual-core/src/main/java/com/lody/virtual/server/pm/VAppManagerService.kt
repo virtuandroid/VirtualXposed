@@ -45,11 +45,11 @@ import java.util.concurrent.atomic.AtomicReference
 class VAppManagerService : IAppManager.Stub() {
     private val mUidSystem = UidSystem()
     private val mPersistenceLayer = PackagePersistenceLayer(this)
-    private val mVisibleOutsidePackages: MutableSet<String?> = HashSet()
+    private val mVisibleOutsidePackages: MutableSet<String> = HashSet()
     private val mPermissionManager: VPermissionManager = VPermissionManager.get()
     var isBooting: Boolean = false
         private set
-    private val mRemoteCallbackList = RemoteCallbackList<IPackageObserver?>()
+    private val mRemoteCallbackList = RemoteCallbackList<IPackageObserver>()
     private var mAppRequestListener: IAppRequestListener? = null
 
     override fun scanApps() {

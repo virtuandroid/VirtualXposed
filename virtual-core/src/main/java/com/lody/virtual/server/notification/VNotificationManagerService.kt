@@ -5,15 +5,18 @@ import android.content.Context
 import android.text.TextUtils
 import com.lody.virtual.helper.utils.VLog
 import com.lody.virtual.server.INotificationManager
+import com.lody.virtual.server.security.SecurityUtils.assertPackageMatchesCallingUid
+import com.lody.virtual.server.security.SecurityUtils.enforceCallingUser
 import java.util.concurrent.atomic.AtomicReference
 
 class VNotificationManagerService private constructor(private val mContext: Context) :
     INotificationManager.Stub() {
-    private val mNotificationManager: NotificationManager = mContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    private val mDisables: MutableList<String?> = ArrayList()
+    private val mNotificationManager: NotificationManager =
+        mContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val mDisables: MutableList<String> = ArrayList()
 
     //VApp's Notifications
-    private val mNotifications = HashMap<String?, MutableList<NotificationInfo>?>()
+    private val mNotifications = HashMap<String, MutableList<NotificationInfo>>()
 
     /***
      * fake notification's id
@@ -24,6 +27,9 @@ class VNotificationManagerService private constructor(private val mContext: Cont
      * @return
      */
     override fun dealNotificationId(id: Int, packageName: String?, tag: String?, userId: Int): Int {
+        assertPackageMatchesCallingUid(packageName)
+        enforceCallingUser(userId)
+
         return id
     }
 
@@ -38,10 +44,13 @@ class VNotificationManagerService private constructor(private val mContext: Cont
      */
     override fun dealNotificationTag(
         id: Int,
-        packageName: String?,
+        packageName: String,
         tag: String?,
         userId: Int
     ): String? {
+        assertPackageMatchesCallingUid(packageName)
+        enforceCallingUser(userId)
+
         if (TextUtils.equals(mContext.packageName, packageName)) {
             return tag
         }
@@ -52,6 +61,9 @@ class VNotificationManagerService private constructor(private val mContext: Cont
     }
 
     override fun areNotificationsEnabledForPackage(packageName: String?, userId: Int): Boolean {
+        assertPackageMatchesCallingUid(packageName)
+        enforceCallingUser(userId)
+
         return !mDisables.contains("$packageName:$userId")
     }
 
@@ -60,6 +72,9 @@ class VNotificationManagerService private constructor(private val mContext: Cont
         enable: Boolean,
         userId: Int
     ) {
+        assertPackageMatchesCallingUid(packageName)
+        enforceCallingUser(userId)
+
         val key = "$packageName:$userId"
         if (enable) {
             if (mDisables.contains(key)) {
@@ -73,7 +88,10 @@ class VNotificationManagerService private constructor(private val mContext: Cont
         //TODO: save mDisables ?
     }
 
-    override fun addNotification(id: Int, tag: String?, packageName: String?, userId: Int) {
+    override fun addNotification(id: Int, tag: String?, packageName: String, userId: Int) {
+        assertPackageMatchesCallingUid(packageName)
+        enforceCallingUser(userId)
+
         val notificationInfo = NotificationInfo(id, tag, packageName, userId)
         synchronized(mNotifications) {
             var list = mNotifications[packageName]
@@ -88,6 +106,9 @@ class VNotificationManagerService private constructor(private val mContext: Cont
     }
 
     override fun cancelAllNotification(packageName: String?, userId: Int) {
+        assertPackageMatchesCallingUid(packageName)
+        enforceCallingUser(userId)
+
         val infos: MutableList<NotificationInfo> = ArrayList<NotificationInfo>()
         synchronized(mNotifications) {
             val list = mNotifications[packageName]
@@ -118,6 +139,7 @@ class VNotificationManagerService private constructor(private val mContext: Cont
     companion object {
         private val gService = AtomicReference<VNotificationManagerService>()
         val TAG: String = NotificationCompat::class.java.getSimpleName()
+
         @JvmStatic
         fun systemReady(context: Context) {
             val instance = VNotificationManagerService(context)

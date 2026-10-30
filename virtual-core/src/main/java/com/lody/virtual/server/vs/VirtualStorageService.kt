@@ -4,22 +4,25 @@ import android.os.RemoteException
 import android.util.SparseArray
 import com.lody.virtual.server.IVirtualStorageService
 import com.lody.virtual.server.pm.VUserManagerService
+import com.lody.virtual.server.security.SecurityUtils.assertPackageMatchesCallingUid
+import com.lody.virtual.server.security.SecurityUtils.enforceCallingUser
 
 /**
  * @author Lody
  */
 class VirtualStorageService private constructor() : IVirtualStorageService.Stub() {
     private val mLayer = VSPersistenceLayer(this)
-    val configs: SparseArray<HashMap<String?, VSConfig?>?> =
-        SparseArray()
+    val configs: SparseArray<HashMap<String, VSConfig>> = SparseArray()
 
     init {
         mLayer.read()
     }
 
     @Throws(RemoteException::class)
-    override fun setVirtualStorage(packageName: String?, userId: Int, vsPath: String?) {
+    override fun setVirtualStorage(packageName: String, userId: Int, vsPath: String?) {
         checkUserId(userId)
+        enforceCallingUser(userId)
+        assertPackageMatchesCallingUid(packageName)
         synchronized(this.configs) {
             val config = getOrCreateVSConfigLocked(packageName, userId)
             config.vsPath = vsPath
@@ -27,7 +30,7 @@ class VirtualStorageService private constructor() : IVirtualStorageService.Stub(
         }
     }
 
-    private fun getOrCreateVSConfigLocked(packageName: String?, userId: Int): VSConfig {
+    private fun getOrCreateVSConfigLocked(packageName: String, userId: Int): VSConfig {
         var userMap = configs.get(userId)
         if (userMap == null) {
             userMap = HashMap()
@@ -44,8 +47,11 @@ class VirtualStorageService private constructor() : IVirtualStorageService.Stub(
 
 
     @Throws(RemoteException::class)
-    override fun getVirtualStorage(packageName: String?, userId: Int): String? {
+    override fun getVirtualStorage(packageName: String, userId: Int): String? {
         checkUserId(userId)
+        enforceCallingUser(userId)
+        assertPackageMatchesCallingUid(packageName)
+
         synchronized(this.configs) {
             val config = getOrCreateVSConfigLocked(packageName, userId)
             return config.vsPath
@@ -53,8 +59,11 @@ class VirtualStorageService private constructor() : IVirtualStorageService.Stub(
     }
 
     @Throws(RemoteException::class)
-    override fun setVirtualStorageState(packageName: String?, userId: Int, enable: Boolean) {
+    override fun setVirtualStorageState(packageName: String, userId: Int, enable: Boolean) {
         checkUserId(userId)
+        enforceCallingUser(userId)
+        assertPackageMatchesCallingUid(packageName)
+
         synchronized(this.configs) {
             val config = getOrCreateVSConfigLocked(packageName, userId)
             config.enable = enable
@@ -63,8 +72,11 @@ class VirtualStorageService private constructor() : IVirtualStorageService.Stub(
     }
 
     @Throws(RemoteException::class)
-    override fun isVirtualStorageEnable(packageName: String?, userId: Int): Boolean {
+    override fun isVirtualStorageEnable(packageName: String, userId: Int): Boolean {
         checkUserId(userId)
+        enforceCallingUser(userId)
+        assertPackageMatchesCallingUid(packageName)
+
         synchronized(this.configs) {
             val config = getOrCreateVSConfigLocked(packageName, userId)
             return config.enable
@@ -77,6 +89,7 @@ class VirtualStorageService private constructor() : IVirtualStorageService.Stub(
 
     companion object {
         private val sService = VirtualStorageService()
+
         @JvmStatic
         fun get(): VirtualStorageService {
             return sService

@@ -52,9 +52,9 @@ import kotlin.math.abs
 class VAccountManagerService : IAccountManager.Stub() {
     // TODO refactor to accounts by UID
     // TODO remove accounts on app uninstall
-    private val accountsByUserId = SparseArray<MutableList<VAccount>?>()
+    private val accountsByUserId = SparseArray<MutableList<VAccount>>()
     private val authTokenRecords = LinkedList<AuthTokenRecord>()
-    private val mSessions = LinkedHashMap<String?, Session?>()
+    private val mSessions = LinkedHashMap<String, Session>()
     private val cache = AuthenticatorCache()
     private val mContext: Context = VirtualCore.get().context
     private var lastAccountChangeTime: Long = 0
@@ -1013,7 +1013,7 @@ class VAccountManagerService : IAccountManager.Stub() {
     }
 
     private fun generateServicesMap(
-        services: List<ResolveInfo>, map: MutableMap<String?, AuthenticatorInfo>,
+        services: List<ResolveInfo>, map: MutableMap<String, AuthenticatorInfo>,
         accountParser: RegisteredServicesParser
     ) {
         for (info in services) {
@@ -1099,7 +1099,7 @@ class VAccountManagerService : IAccountManager.Stub() {
     )
 
     private class AuthenticatorCache {
-        val authenticators: MutableMap<String?, AuthenticatorInfo> =
+        val authenticators: MutableMap<String, AuthenticatorInfo> =
             HashMap()
     }
 

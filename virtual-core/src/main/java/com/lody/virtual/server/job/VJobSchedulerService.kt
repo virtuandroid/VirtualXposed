@@ -9,7 +9,6 @@ import android.os.Parcel
 import android.os.Parcelable
 import android.os.PersistableBundle
 import android.os.RemoteException
-import android.text.TextUtils
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.stub.VASettings
 import com.lody.virtual.helper.utils.Singleton
@@ -19,13 +18,14 @@ import com.lody.virtual.server.IJobScheduler
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 
 /**
  * @author Lody
  */
 class VJobSchedulerService private constructor() : IJobScheduler.Stub() {
-    private val mJobStore: MutableMap<JobId, JobConfig> = HashMap()
+    private val mJobStore = ConcurrentHashMap<JobId, JobConfig>()
     private var mGlobalJobId = 0
 
     private val mScheduler = VirtualCore.get().context
@@ -142,10 +142,11 @@ class VJobSchedulerService private constructor() : IJobScheduler.Stub() {
     private fun saveJobs() {
         val jobFile = VEnvironment.getJobConfigFile()
         val p = Parcel.obtain()
+        val copy = mJobStore.toMap()
         try {
             p.writeInt(JOB_FILE_VERSION)
-            p.writeInt(mJobStore.size)
-            for ((key, value) in mJobStore) {
+            p.writeInt(copy.size)
+            for ((key, value) in copy) {
                 key.writeToParcel(p, 0)
                 value.writeToParcel(p, 0)
             }

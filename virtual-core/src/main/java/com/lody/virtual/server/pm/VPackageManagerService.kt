@@ -44,6 +44,7 @@ import timber.log.Timber
 import java.io.File
 import java.io.PrintWriter
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -57,12 +58,12 @@ class VPackageManagerService : IPackageManager.Stub() {
     private val mProviders = ProviderIntentResolver()
 
     // mMap[packageName][identifier]
-    private val mProvidersByComponent = HashMap<String, HashMap<ComponentName, ProviderComponent>>()
-    private val mPermissions = HashMap<String, HashMap<String, PermissionComponent>>()
-    private val mPermissionGroups = HashMap<String, HashMap<String, PermissionGroupComponent>>()
-    private val mProvidersByAuthority = HashMap<String, HashMap<String, ProviderComponent>>()
+    private val mProvidersByComponent = ConcurrentHashMap<String, ConcurrentHashMap<ComponentName, ProviderComponent>>()
+    private val mPermissions = ConcurrentHashMap<String, ConcurrentHashMap<String, PermissionComponent>>()
+    private val mPermissionGroups = ConcurrentHashMap<String, ConcurrentHashMap<String, PermissionGroupComponent>>()
+    private val mProvidersByAuthority = ConcurrentHashMap<String, ConcurrentHashMap<String, ProviderComponent>>()
 
-    private val mPackages: MutableMap<String?, VPackage> = PackageCacheManager.PACKAGE_CACHE
+    private val mPackages: MutableMap<String, VPackage> = PackageCacheManager.PACKAGE_CACHE
 
 
     init {
@@ -101,20 +102,20 @@ class VPackageManagerService : IPackageManager.Stub() {
             val names: Array<String> =
                 p.info.authority.split(";".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
 
-            mProvidersByAuthority[pkg.packageName] = HashMap()
+            mProvidersByAuthority[pkg.packageName] = ConcurrentHashMap()
             names.forEach { name ->
                 mProvidersByAuthority[pkg.packageName]?.set(name, p)
             }
-            mProvidersByComponent[pkg.packageName] = HashMap()
+            mProvidersByComponent[pkg.packageName] = ConcurrentHashMap()
             mProvidersByComponent[pkg.packageName]?.set(p.getComponentName(), p)
         }
 
-        mPermissions[pkg.packageName] = HashMap()
+        mPermissions[pkg.packageName] = ConcurrentHashMap()
         pkg.permissions.forEach { permission ->
             mPermissions[pkg.packageName]?.set(permission.className, permission)
         }
 
-        mPermissionGroups[pkg.packageName] = HashMap()
+        mPermissionGroups[pkg.packageName] = ConcurrentHashMap()
         pkg.permissionGroups.forEach { group ->
             mPermissionGroups[pkg.packageName]?.set(group.className, group)
         }
@@ -1140,7 +1141,7 @@ class VPackageManagerService : IPackageManager.Stub() {
     private class ServiceIntentResolver :
         IntentResolver<VPackage.ServiceIntentInfo?, ResolveInfo?>() {
         // Keys are String (activity class name), values are Activity.
-        val mServices = HashMap<ComponentName?, ServiceComponent?>()
+        val mServices = HashMap<ComponentName, ServiceComponent>()
         private var mFlags = 0
 
         override fun queryIntent(

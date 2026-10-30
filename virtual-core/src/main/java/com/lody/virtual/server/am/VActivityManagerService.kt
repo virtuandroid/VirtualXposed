@@ -37,6 +37,7 @@ import com.lody.virtual.IntentHelper.INTENT_USER_ID
 import com.lody.virtual.client.IVClient
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.env.Constants
+import com.lody.virtual.client.env.Constants.EXTRA_USER_HANDLE
 import com.lody.virtual.client.env.SpecialComponentList
 import com.lody.virtual.client.ipc.ProviderCall
 import com.lody.virtual.client.ipc.VNotificationManager
@@ -177,8 +178,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun getPackageForIntentSender(binder: IBinder?): String? {
-        val caller = VBinder.getCallingPackageName()
-        val data = mPendingIntents.getPendingIntent(caller, binder)
+        val data = mPendingIntents.getPendingIntent(binder)
         if (data != null) {
             return data.creator
         }
@@ -186,18 +186,15 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun getPendingIntent(binder: IBinder?): PendingIntentData? {
-        val caller = VBinder.getCallingPackageName()
-        return mPendingIntents.getPendingIntent(caller, binder)
+        return mPendingIntents.getPendingIntent(binder)
     }
 
     override fun addPendingIntent(binder: IBinder, creator: String?) {
-        val caller = VBinder.getCallingPackageName()
-        mPendingIntents.addPendingIntent(caller, binder, creator)
+        mPendingIntents.addPendingIntent(binder, creator)
     }
 
     override fun removePendingIntent(binder: IBinder?) {
-        val caller = VBinder.getCallingPackageName()
-        mPendingIntents.removePendingIntent(caller, binder)
+        mPendingIntents.removePendingIntent(binder)
     }
 
     override fun getSystemPid(): Int {
@@ -915,7 +912,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         )
         intent.setPackage(ps.packageName)
         intent.putExtra(Intent.EXTRA_UID, VUserHandle.getUid(ps.appId, userId))
-        intent.putExtra("android.intent.extra.user_handle", userId)
+        intent.putExtra(EXTRA_USER_HANDLE, userId)
         sendBroadcastAsUser(intent, null)
     }
 

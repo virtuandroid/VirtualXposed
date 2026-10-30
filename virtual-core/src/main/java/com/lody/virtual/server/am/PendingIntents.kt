@@ -3,47 +3,45 @@ package com.lody.virtual.server.am
 import android.os.IBinder
 import android.os.RemoteException
 import com.lody.virtual.remote.PendingIntentData
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * @author Lody
  */
 class PendingIntents {
-    private val mLruHistory: MutableMap<String, MutableMap<IBinder, PendingIntentData>> = HashMap()
+    private val mLruHistory = ConcurrentHashMap<IBinder, PendingIntentData>()
 
-    fun getPendingIntent(packageName: String, binder: IBinder?): PendingIntentData? {
+    fun getPendingIntent(binder: IBinder?): PendingIntentData? {
         synchronized(mLruHistory) {
-            return mLruHistory[packageName]?.get(binder)
+            return mLruHistory[binder]
         }
     }
 
-    fun addPendingIntent(packageName: String, binder: IBinder, creator: String?) {
+    fun addPendingIntent(binder: IBinder, creator: String?) {
         synchronized(mLruHistory) {
             try {
                 binder.linkToDeath(object : IBinder.DeathRecipient {
                     override fun binderDied() {
                         binder.unlinkToDeath(this, 0)
-                        mLruHistory[packageName]?.remove(binder)
+                        mLruHistory.remove(binder)
                     }
                 }, 0)
             } catch (e: RemoteException) {
                 e.printStackTrace()
             }
 
-            val pendingIntentData = mLruHistory[packageName]?.get(binder)
+            val pendingIntentData = mLruHistory[binder]
             if (pendingIntentData == null) {
-                if (!mLruHistory.contains(packageName)) {
-                    mLruHistory[packageName] = HashMap()
-                }
-                mLruHistory[packageName]?.put(binder, PendingIntentData(creator, binder))
+                mLruHistory[binder] = PendingIntentData(creator, binder)
             } else {
                 pendingIntentData.creator = creator
             }
         }
     }
 
-    fun removePendingIntent(packageName: String, binder: IBinder?) {
+    fun removePendingIntent(binder: IBinder?) {
         synchronized(mLruHistory) {
-            mLruHistory[packageName]?.remove(binder)
+            mLruHistory.remove(binder)
         }
     }
 }

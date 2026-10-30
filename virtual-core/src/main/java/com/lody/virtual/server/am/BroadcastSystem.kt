@@ -215,6 +215,7 @@ class BroadcastSystem private constructor(
     ) : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
             // Disallow apps from outside VirtualXposed from sending broadcasts
+            // TODO Verify that this work as it should
             if (VBinder.getCallingPid() != Process.myPid()) {
                 return
             }

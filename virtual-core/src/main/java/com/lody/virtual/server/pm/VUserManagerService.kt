@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.SparseArray
 import android.util.Xml
+import androidx.core.util.size
 import com.lody.virtual.R
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.env.Constants
@@ -23,9 +24,11 @@ import com.lody.virtual.os.VUserInfo
 import com.lody.virtual.os.VUserManager
 import com.lody.virtual.server.IUserManager
 import com.lody.virtual.server.am.VActivityManagerService
+import com.lody.virtual.server.security.SecurityUtils.enforceCallingUser
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 import org.xmlpull.v1.XmlSerializer
+import timber.log.Timber
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileDescriptor
@@ -33,8 +36,6 @@ import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
-import androidx.core.util.size
-import timber.log.Timber
 
 /**
  * @author Lody
@@ -109,8 +110,8 @@ class VUserManagerService private constructor(
         }
     }
 
-    override fun getUsers(excludeDying: Boolean): MutableList<VUserInfo?> {
-        //checkManageUsersPermission("query users");
+    override fun getUsers(excludeDying: Boolean): List<VUserInfo?> {
+        checkManageUsersPermission("query users");
         synchronized(mPackagesLock) {
             val users = ArrayList<VUserInfo?>(mUsers.size)
             for (i in 0..<mUsers.size) {
@@ -127,6 +128,7 @@ class VUserManagerService private constructor(
     }
 
     override fun getUserInfo(userId: Int): VUserInfo? {
+        enforceCallingUser(userId)
         //checkManageUsersPermission("query user");
         synchronized(mPackagesLock) {
             return getUserInfoLocked(userId)
@@ -196,6 +198,7 @@ class VUserManagerService private constructor(
     }
 
     override fun getUserIcon(userId: Int): Bitmap? {
+        enforceCallingUser(userId)
         //checkManageUsersPermission("read users");
         synchronized(mPackagesLock) {
             val info = mUsers.get(userId)
@@ -745,16 +748,17 @@ class VUserManagerService private constructor(
     }
 
     override fun getUserSerialNumber(userHandle: Int): Int {
+        enforceCallingUser(userHandle)
         synchronized(mPackagesLock) {
             if (!exists(userHandle)) return -1
-            return getUserInfoLocked(userHandle)!!.serialNumber
+            return getUserInfoLocked(userHandle)?.serialNumber ?: -1
         }
     }
 
     override fun getUserHandle(userSerialNumber: Int): Int {
         synchronized(mPackagesLock) {
             for (userId in this.userIdsLPr) {
-                if (getUserInfoLocked(userId)!!.serialNumber == userSerialNumber) return userId
+                if (getUserInfoLocked(userId)?.serialNumber == userSerialNumber) return userId
             }
             // Not found
             return -1
