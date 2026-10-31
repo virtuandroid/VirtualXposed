@@ -175,8 +175,9 @@ class VAppManagerService : IAppManager.Stub() {
         if (!libDir.exists() && !libDir.mkdirs()) {
             return InstallResult.makeFailure("Unable to create lib dir.")
         }
-        var dependSystem = (flags and InstallStrategy.DEPEND_SYSTEM_IF_EXIST) != 0
-                && VirtualCore.get().isOutsideInstalled(pkg.packageName)
+        var dependSystem =
+            (flags and InstallStrategy.DEPEND_SYSTEM_IF_EXIST) != 0 && VirtualCore.get()
+                .isOutsideInstalled(pkg.packageName)
 
         if (existSetting != null && existSetting.dependSystem) {
             dependSystem = false
@@ -242,7 +243,7 @@ class VAppManagerService : IAppManager.Stub() {
             ps.lastUpdateTime = installTime
             for (userId in VUserManagerService.get().userIds) {
                 val installed = userId == 0
-                ps.setUserState(userId, false,  /*launched*/false,  /*hidden*/installed)
+                ps.setUserState(userId, false, false, installed)
             }
         }
         ps.splitCodePaths = splitCodePaths
@@ -322,8 +323,7 @@ class VAppManagerService : IAppManager.Stub() {
                 return
             }
             FileUtils.chmod(
-                packageFile?.getParentFile()!!.absolutePath,
-                FileUtils.FileMode.MODE_755
+                packageFile?.getParentFile()!!.absolutePath, FileUtils.FileMode.MODE_755
             )
             FileUtils.chmod(packageFile.absolutePath, FileUtils.FileMode.MODE_755)
         } catch (e: Exception) {
@@ -483,8 +483,7 @@ class VAppManagerService : IAppManager.Stub() {
 
     override fun getInstalledAppsAsUser(userId: Int, flags: Int): List<InstalledAppInfo> {
         enforceCallingUser(userId)
-        val infoList: MutableList<InstalledAppInfo> =
-            ArrayList(installedAppCount)
+        val infoList: MutableList<InstalledAppInfo> = ArrayList(installedAppCount)
         for (p in PackageCacheManager.PACKAGE_CACHE.values) {
             val setting = p.mExtras as PackageSetting
             var visible = setting.isInstalled(userId)

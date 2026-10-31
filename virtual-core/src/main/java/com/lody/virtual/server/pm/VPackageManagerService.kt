@@ -35,8 +35,11 @@ import com.lody.virtual.server.pm.parser.VPackage.PermissionComponent
 import com.lody.virtual.server.pm.parser.VPackage.PermissionGroupComponent
 import com.lody.virtual.server.pm.parser.VPackage.ProviderComponent
 import com.lody.virtual.server.pm.parser.VPackage.ServiceComponent
-import com.lody.virtual.server.security.SecurityUtils.assertActivityAllowed
 import com.lody.virtual.server.security.SecurityUtils.enforceCallingUser
+import com.lody.virtual.server.security.SecurityUtils.isActivityAllowed
+import com.lody.virtual.server.security.SecurityUtils.isProviderAllowed
+import com.lody.virtual.server.security.SecurityUtils.isResolveInfoAllowed
+import com.lody.virtual.server.security.SecurityUtils.isServiceAllowed
 import com.virtualxposed.log.client.LogMessage
 import com.virtualxposed.log.client.LogMessage.GetProvider
 import com.virtualxposed.log.client.LogMessage.GetService
@@ -236,7 +239,6 @@ class VPackageManagerService : IPackageManager.Stub() {
         enforceCallingUser(userId)
 
         val flags = updateFlagsNought(flags)
-        val callingPackage = VBinder.getCallingPackageName()
 
         synchronized(mPackages) {
             val p = mPackages[component.packageName]
@@ -256,10 +258,13 @@ class VPackageManagerService : IPackageManager.Stub() {
                         component.className,
                         activityInfo.exported
                     )
+
                     val holder = LogMessageHolder.Builder(logMessage).build()
                     VLoggingManagerService.get().log(holder)
 
-                    assertActivityAllowed(activityInfo)
+                    if (!isActivityAllowed(activityInfo)) {
+                        throw SecurityException("Activity not accessible from calling package!")
+                    }
 
                     ComponentFixer.fixComponentInfo(ps, activityInfo, userId)
                     return activityInfo
@@ -316,7 +321,7 @@ class VPackageManagerService : IPackageManager.Stub() {
                     val holder = LogMessageHolder.Builder(logMessage).build()
                     VLoggingManagerService.get().log(holder)
 
-                    if (!receiverInfo.exported && callingPackage != p.packageName) {
+                    if (!isActivityAllowed(receiverInfo)) {
                         throw SecurityException("Unable to access non-exported receiver in " + p.packageName + " from " + callingPackage)
                     }
 
@@ -343,6 +348,12 @@ class VPackageManagerService : IPackageManager.Stub() {
                 val s = mServices.mServices[component]
 
                 if (s != null) {
+                    val serviceInfo = PackageParserEx.generateServiceInfo(
+                        s,
+                        flags,
+                        ps.readUserState(userId),
+                        userId
+                    )
                     val logMessage: LogMessage = GetService(
                         component.packageName,
                         component.className,
@@ -351,16 +362,10 @@ class VPackageManagerService : IPackageManager.Stub() {
                     val holder = LogMessageHolder.Builder(logMessage).build()
                     VLoggingManagerService.get().log(holder)
 
-                    if (!s.info.exported && callingPackage != p.packageName) {
+                    if (!isServiceAllowed(serviceInfo)) {
                         throw SecurityException("Unable to access non-exported service in " + p.packageName + " from " + callingPackage)
                     }
 
-                    val serviceInfo = PackageParserEx.generateServiceInfo(
-                        s,
-                        flags,
-                        ps.readUserState(userId),
-                        userId
-                    )
                     ComponentFixer.fixComponentInfo(ps, serviceInfo, userId)
                     return serviceInfo
                 }
@@ -390,16 +395,16 @@ class VPackageManagerService : IPackageManager.Stub() {
                     val holder = LogMessageHolder.Builder(logMessage).build()
                     VLoggingManagerService.get().log(holder)
 
-                    if (!provider.info.exported && callingPackage != p.packageName) {
-                        throw SecurityException("Unable to access non-exported provider in " + p.packageName + " from " + callingPackage)
-                    }
-
                     val providerInfo = PackageParserEx.generateProviderInfo(
                         provider,
                         flags,
                         ps.readUserState(userId),
                         userId
                     )
+
+                    if (!isProviderAllowed(providerInfo)) {
+                        throw SecurityException("Unable to access non-exported provider in " + p.packageName + " from " + callingPackage)
+                    }
                     ComponentFixer.fixComponentInfo(ps, providerInfo, userId)
                     return providerInfo
                 }
@@ -491,7 +496,6 @@ class VPackageManagerService : IPackageManager.Stub() {
             }
         }
 
-        val callingPackage = VBinder.getCallingPackageName()
         synchronized(mPackages) {
             val pkgName = intent.getPackage()
             val pkg = mPackages[pkgName]
@@ -511,10 +515,8 @@ class VPackageManagerService : IPackageManager.Stub() {
                     userId
                 )
             }
-            // TODO Missing permission checks
-            return list?.filter {
-                val info = it.activityInfo ?: it.serviceInfo ?: it.providerInfo
-                info.exported || info.packageName == callingPackage
+            return list?.filter { resolveInfo ->
+                isResolveInfoAllowed(resolveInfo)
             }
         }
     }
@@ -563,8 +565,7 @@ class VPackageManagerService : IPackageManager.Stub() {
                 )
             }
             return list?.filter {
-                val info = it.activityInfo ?: it.serviceInfo ?: it.providerInfo
-                info.exported || info.packageName == callingPackage
+                isResolveInfoAllowed(it)
             }
         }
     }
@@ -614,7 +615,6 @@ class VPackageManagerService : IPackageManager.Stub() {
             }
         }
 
-        val callingPackage = VBinder.getCallingPackageName()
         synchronized(mPackages) {
             val pkgName = intent.getPackage()
             val pkg = mPackages[pkgName]
@@ -635,8 +635,7 @@ class VPackageManagerService : IPackageManager.Stub() {
                 )
             }
             return list?.filter {
-                val info = it.serviceInfo ?: it.activityInfo ?: it.providerInfo
-                info.exported || info.packageName == callingPackage
+                isResolveInfoAllowed(it)
             }
         }
     }
@@ -686,8 +685,7 @@ class VPackageManagerService : IPackageManager.Stub() {
                 )
             }
             return list?.filter {
-                val info = it.providerInfo ?: it.serviceInfo ?: it.activityInfo
-                info.exported || info.packageName == callingPackage
+                isResolveInfoAllowed(it)
             }
         }
     }
@@ -725,8 +723,7 @@ class VPackageManagerService : IPackageManager.Stub() {
             Collections.sort(providerList, sProviderInitOrderSorter)
         }
 
-        // Do not return non-exported providers
-        val finalList = providerList.filter { it.exported || it.packageName == callingPackage }
+        val finalList = providerList.filter { isProviderAllowed(it) }
         return VParceledListSlice(finalList)
     }
 
@@ -847,7 +844,7 @@ class VPackageManagerService : IPackageManager.Stub() {
                     )
                     val p = mPackages[providerInfo.packageName]
 
-                    if (!provider.info.exported && callingPackage != providerInfo.packageName) {
+                    if (!isProviderAllowed(providerInfo)) {
                         throw SecurityException("Unable to access non-exported provider in " + providerInfo.packageName + " from " + callingPackage)
                     }
 
@@ -1180,7 +1177,6 @@ class VPackageManagerService : IPackageManager.Stub() {
             if (packageServices == null) {
                 return null
             }
-            val caller = VBinder.getCallingPackageName()
             mFlags = flags
             val defaultOnly = (flags and PackageManager.MATCH_DEFAULT_ONLY) != 0
             val listCut = packageServices.mapNotNull { serviceComponent ->
@@ -1196,8 +1192,7 @@ class VPackageManagerService : IPackageManager.Stub() {
                 ArrayList(listCut),
                 userId
             )?.filterNotNull()?.filter {
-                val info = it.activityInfo ?: it.serviceInfo ?: it.providerInfo
-                info.exported || info.packageName == caller
+                isResolveInfoAllowed(it)
             }
         }
 

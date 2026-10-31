@@ -17,14 +17,15 @@ import com.lody.virtual.IntentHelper.BROADCAST_SPECIFIC_PACKAGE
 import com.lody.virtual.IntentHelper.INTENT_USER_ID
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.env.SpecialComponentList
+import com.lody.virtual.client.ipc.VPackageManager
 import com.lody.virtual.helper.collection.ArrayMap
 import com.lody.virtual.helper.utils.VLog
 import com.lody.virtual.os.VBinder
-import com.lody.virtual.os.VUserHandle
 import com.lody.virtual.remote.PendingResultData
 import com.lody.virtual.server.pm.PackageSetting
 import com.lody.virtual.server.pm.VAppManagerService
 import com.lody.virtual.server.pm.parser.VPackage
+import com.lody.virtual.server.security.SecurityUtils
 import mirror.android.app.ContextImpl
 import mirror.android.app.LoadedApkHuaWei
 import mirror.android.rms.resource.ReceiverResourceLP
@@ -219,15 +220,16 @@ class BroadcastSystem private constructor(
             if (VBinder.getCallingPid() != Process.myPid()) {
                 return
             }
+
             // This cannot be spoofed since the caller is trusted.
             val callingPackage = intent.getStringExtra(BROADCAST_CALLING_PACKAGE) ?: return
             val callingUserId = intent.getIntExtra(INTENT_USER_ID, -1).takeIf { it >= 0 } ?: return
-            val infoUserId = VUserHandle.getUserId(info.applicationInfo.uid)
-            // Disallow private receivers and cross-user sending
-            if ((callingPackage != info.packageName && !info.exported) || infoUserId != callingUserId) {
-                info.applicationInfo.uid
+            val uid = VPackageManager.get().getPackageUid(callingPackage, callingUserId)
+
+            // Disallow private receivers
+            val isBroadCastAllowed = SecurityUtils.isBroadcastAllowed(info, uid)
+            if (!isBroadCastAllowed) {
                 Timber.i("Blocked package $callingPackage from sending a broadcast to ${info.name}")
-                // TODO add permission checks
                 return
             }
             if (mApp.isBooting) {

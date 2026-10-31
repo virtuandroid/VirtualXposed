@@ -2,6 +2,8 @@ package com.lody.virtual.os;
 
 import android.os.Binder;
 
+import androidx.annotation.Nullable;
+
 import com.lody.virtual.client.core.VirtualCore;
 import com.lody.virtual.client.ipc.VActivityManager;
 import com.lody.virtual.client.ipc.VPackageManager;
@@ -21,7 +23,7 @@ public class VBinder {
         }
     }
 
-    public static String getCallingPackageName() {
+    public static @Nullable String getCallingPackageName() {
         return VPackageManager.get().getNameForUid(VBinder.getCallingUid());
     }
 

@@ -2,6 +2,9 @@ package com.lody.virtual.server.security
 
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.pm.ProviderInfo
+import android.content.pm.ResolveInfo
+import android.content.pm.ServiceInfo
 import com.lody.virtual.client.ipc.VActivityManager
 import com.lody.virtual.client.ipc.VPackageManager
 import com.lody.virtual.os.VBinder
@@ -14,6 +17,7 @@ object SecurityUtils {
     private val permissionManager by lazy {
         VPermissionManager.get()
     }
+
     @Throws
     private fun getCallingUidSafe(): Int {
         val uid = VBinder.getCallingUid()
@@ -116,29 +120,120 @@ object SecurityUtils {
                 && callingUid != VActivityManager.get().systemPid)
     }
 
-    fun assertActivityAllowed(activity: ActivityInfo) {
-        if (!isActivityAllowed(activity)) {
-            throw SecurityException("Activity not accessible from calling package!")
-        }
+    fun isBroadcastAllowed(
+        activity: ActivityInfo,
+        callingUid: Int,
+    ): Boolean {
+        return isIpcAllowed(
+            activity.packageName,
+            activity.exported,
+            activity.permission,
+            activity.applicationInfo.uid,
+            callingUid
+        )
+    }
+
+    fun isServiceAllowed(service: ServiceInfo): Boolean {
+        return isIpcAllowed(
+            service.packageName,
+            service.exported,
+            service.permission,
+            service.applicationInfo.uid
+        )
     }
 
     fun isActivityAllowed(activity: ActivityInfo): Boolean {
-        val callingPackage = VBinder.getCallingPackageName()
+        return isIpcAllowed(
+            activity.packageName,
+            activity.exported,
+            activity.permission,
+            activity.applicationInfo.uid
+        )
+    }
+
+    fun isProviderAllowed(provider: ProviderInfo): Boolean {
+        return isIpcAllowed(
+            provider.packageName,
+            provider.exported,
+            provider.writePermission,
+            provider.applicationInfo.uid
+        )
+    }
+
+    fun isResolveInfoAllowed(resolveInfo: ResolveInfo): Boolean {
+        return when {
+            resolveInfo.activityInfo != null -> {
+                val activity = resolveInfo.activityInfo
+                isActivityAllowed(activity)
+            }
+
+            resolveInfo.serviceInfo != null -> {
+                val service = resolveInfo.serviceInfo
+                isServiceAllowed(service)
+            }
+
+            resolveInfo.providerInfo != null -> {
+                val provider = resolveInfo.providerInfo
+                isProviderAllowed(provider)
+            }
+
+            else -> {
+                false
+            }
+        }
+    }
+
+    private fun isIpcAllowed(
+        servicePackage: String,
+        serviceExported: Boolean,
+        servicePermission: String?,
+        serviceAppUid: Int,
+        callingUid: Int,
+    ): Boolean {
+        // TODO minimize IPC calls
+
+        // Always allow IPC from system process
+        if (callingUid == VActivityManager.get().systemPid) {
+            return true
+        }
+
+        // Disallow all cross-user interaction
+        if (VUserHandle.getUserId(serviceAppUid) != VUserHandle.getUserId(callingUid)) {
+            return false
+        }
 
         // Apps can always start their own activities
-        if (callingPackage == activity.packageName) {
+        val callingPackage = VPackageManager.get().getNameForUid(callingUid)
+        if (callingPackage == servicePackage) {
             return true
         }
 
         // External app cannot start non-exported activities
-        if (!activity.exported) {
+        if (!serviceExported) {
             return false
         }
 
         // If a permission exists then ensure the caller has it
-        val permission = activity.permission.takeUnless { it.isNullOrBlank() } ?: return true
-        val callingUid = VBinder.getCallingUid()
+        val permission = servicePermission.takeUnless { it.isNullOrBlank() } ?: return true
 
-        return permissionManager.checkPermission(permission, callingUid) == PackageManager.PERMISSION_GRANTED
+        return permissionManager.checkPermission(
+            permission,
+            callingUid
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun isIpcAllowed(
+        servicePackage: String,
+        exported: Boolean,
+        permission: String?,
+        uid: Int
+    ): Boolean {
+        return isIpcAllowed(
+            servicePackage,
+            exported,
+            permission,
+            uid,
+            getCallingUidSafe(),
+        )
     }
 }

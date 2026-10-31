@@ -1,18 +1,13 @@
 package com.lody.virtual.server.hook
 
-import android.content.Intent
-import android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 import android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-import android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-import android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
 import android.os.IBinder
 import com.lody.virtual.client.VectorClient.VECTOR_PACKAGE
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.ipc.VActivityManager
 import com.lody.virtual.client.stub.GrantHookScopesActivity
 import com.lody.virtual.os.VBinder
-import com.lody.virtual.server.am.VActivityManagerService
 import com.virtualxposed.hook.server.IVHookService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -60,7 +55,7 @@ object VHookManagerService : IVHookService.Stub() {
 
         return when (matchingRule?.action) {
             null -> {
-                val callingPackage = VBinder.getCallingPackageName()
+                val callingPackage = VBinder.getCallingPackageName() ?: return DEFAULT_ACTION
                 val result = CompletableDeferred<Int?>()
                 val context = VirtualCore.get().context
 
