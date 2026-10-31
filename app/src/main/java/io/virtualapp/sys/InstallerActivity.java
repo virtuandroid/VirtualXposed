@@ -160,7 +160,7 @@ public class InstallerActivity extends AppCompatActivity {
                 }
 
                 // mProgressText.setText(getResources().getString(R.string.install_fail, msg));
-                mProgressText.setText("Intalld.addApp failed: " + msg);
+                mProgressText.setText("Install failed: " + msg);
                 mProgressText.postDelayed(() -> {
                     mProgressBar.setVisibility(View.GONE);
                     mRight.setVisibility(View.VISIBLE);

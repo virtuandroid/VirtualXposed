@@ -35,6 +35,7 @@ import com.lody.virtual.server.pm.parser.VPackage.PermissionComponent
 import com.lody.virtual.server.pm.parser.VPackage.PermissionGroupComponent
 import com.lody.virtual.server.pm.parser.VPackage.ProviderComponent
 import com.lody.virtual.server.pm.parser.VPackage.ServiceComponent
+import com.lody.virtual.server.security.SecurityUtils.assertActivityAllowed
 import com.lody.virtual.server.security.SecurityUtils.enforceCallingUser
 import com.virtualxposed.log.client.LogMessage
 import com.virtualxposed.log.client.LogMessage.GetProvider
@@ -58,10 +59,14 @@ class VPackageManagerService : IPackageManager.Stub() {
     private val mProviders = ProviderIntentResolver()
 
     // mMap[packageName][identifier]
-    private val mProvidersByComponent = ConcurrentHashMap<String, ConcurrentHashMap<ComponentName, ProviderComponent>>()
-    private val mPermissions = ConcurrentHashMap<String, ConcurrentHashMap<String, PermissionComponent>>()
-    private val mPermissionGroups = ConcurrentHashMap<String, ConcurrentHashMap<String, PermissionGroupComponent>>()
-    private val mProvidersByAuthority = ConcurrentHashMap<String, ConcurrentHashMap<String, ProviderComponent>>()
+    private val mProvidersByComponent =
+        ConcurrentHashMap<String, ConcurrentHashMap<ComponentName, ProviderComponent>>()
+    private val mPermissions =
+        ConcurrentHashMap<String, ConcurrentHashMap<String, PermissionComponent>>()
+    private val mPermissionGroups =
+        ConcurrentHashMap<String, ConcurrentHashMap<String, PermissionGroupComponent>>()
+    private val mProvidersByAuthority =
+        ConcurrentHashMap<String, ConcurrentHashMap<String, ProviderComponent>>()
 
     private val mPackages: MutableMap<String, VPackage> = PackageCacheManager.PACKAGE_CACHE
 
@@ -112,12 +117,12 @@ class VPackageManagerService : IPackageManager.Stub() {
 
         mPermissions[pkg.packageName] = ConcurrentHashMap()
         pkg.permissions.forEach { permission ->
-            mPermissions[pkg.packageName]?.set(permission.className, permission)
+            mPermissions[pkg.packageName]?.set(permission.info.name, permission)
         }
 
         mPermissionGroups[pkg.packageName] = ConcurrentHashMap()
         pkg.permissionGroups.forEach { group ->
-            mPermissionGroups[pkg.packageName]?.set(group.className, group)
+            mPermissionGroups[pkg.packageName]?.set(group.info.name, group)
         }
     }
 
@@ -254,9 +259,7 @@ class VPackageManagerService : IPackageManager.Stub() {
                     val holder = LogMessageHolder.Builder(logMessage).build()
                     VLoggingManagerService.get().log(holder)
 
-                    if (!activityInfo.exported && callingPackage != p.packageName) {
-                        throw SecurityException("Unable to access non-exported activity in " + p.packageName + " from " + callingPackage)
-                    }
+                    assertActivityAllowed(activityInfo)
 
                     ComponentFixer.fixComponentInfo(ps, activityInfo, userId)
                     return activityInfo
@@ -821,9 +824,10 @@ class VPackageManagerService : IPackageManager.Stub() {
         val callingPackage = VBinder.getCallingPackageName()
 
         synchronized(mPackages) {
-            val provider = mProvidersByAuthority[callingPackage]?.get(name) ?: mProvidersByAuthority.firstNotNullOfOrNull {
-                it.value[name]
-            }
+            val provider = mProvidersByAuthority[callingPackage]?.get(name)
+                ?: mProvidersByAuthority.firstNotNullOfOrNull {
+                    it.value[name]
+                }
 
             if (provider != null) {
                 val ps = provider.owner.mExtras

@@ -34,7 +34,6 @@ import com.virtualxposed.log.client.LogMessage.AppInstall
 import com.virtualxposed.log.client.LogMessage.AppUninstall
 import com.virtualxposed.log.client.VLoggingClient
 import timber.log.Timber
-import timber.log.Timber.Forest.e
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
@@ -121,9 +120,12 @@ class VAppManagerService : IAppManager.Stub() {
         }
     }
 
-    override fun installPackage(path: String?, flags: Int): InstallResult {
-        // TODO Permission check
-        return installPackage(path, flags, true)
+    override fun installPackage(path: String?, flags: Int): InstallResult? {
+        return runCatching {
+            installPackage(path, flags, true)
+        }.onFailure {
+            Timber.e(it)
+        }.getOrNull()
     }
 
     @Synchronized
@@ -250,8 +252,11 @@ class VAppManagerService : IAppManager.Stub() {
         try {
             mPermissionManager.initPermissionsForUid(ps.appId, pkg)
         } catch (e: Throwable) {
-            e.printStackTrace()
-            return InstallResult.makeFailure("Failed to set permissions")
+            Timber.e(e)
+            // Clean up
+            uninstallPackageFully(ps)
+            val message = e.message?.let { ": $it" } ?: ""
+            return InstallResult.makeFailure("Failed to set permissions$message")
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             appDir?.listFiles()?.forEach { file ->
@@ -285,7 +290,7 @@ class VAppManagerService : IAppManager.Stub() {
         try {
             pkg = PackageParserEx.parsePackage(packageFile)
         } catch (e: Throwable) {
-            e(e)
+            Timber.e(e)
         }
 
         if (pkg?.packageName == null) {
@@ -297,13 +302,13 @@ class VAppManagerService : IAppManager.Stub() {
         try {
             ps = ps.clone() as PackageSetting
         } catch (e: Exception) {
-            e(e)
+            Timber.e(e)
         }
         ps.appId = mUidSystem.getOrCreateUid(userId, pkg)
         try {
             mPermissionManager.initPermissionsForUid(ps.appId, pkg)
         } catch (e: Throwable) {
-            e(e)
+            Timber.e(e)
             return false
         }
         notifyAppInstalled(ps, userId)
@@ -322,7 +327,7 @@ class VAppManagerService : IAppManager.Stub() {
             )
             FileUtils.chmod(packageFile.absolutePath, FileUtils.FileMode.MODE_755)
         } catch (e: Exception) {
-            e(e)
+            Timber.e(e)
         }
     }
 
@@ -417,6 +422,10 @@ class VAppManagerService : IAppManager.Stub() {
             if (!ArrayUtils.contains(userIds, userId)) {
                 return false
             }
+
+            // UID must be fetched before other deletion operations
+            val uid = VPackageManager.get().getPackageUid(packageName, userId)
+
             if (userIds.size == 1) {
                 uninstallPackageFully(ps)
             } else {
@@ -428,7 +437,6 @@ class VAppManagerService : IAppManager.Stub() {
                 FileUtils.deleteDir(VEnvironment.getDataUserPackageDirectory(userId, packageName))
                 FileUtils.deleteDir(VEnvironment.getVirtualPrivateStorageDir(userId, packageName))
             }
-            val uid = VPackageManager.get().getPackageUid(packageName, userId)
             mPermissionManager.removePermissionsForUid(uid)
             return true
         }
@@ -449,7 +457,7 @@ class VAppManagerService : IAppManager.Stub() {
             }
             PackageCacheManager.remove(packageName)
         } catch (e: Exception) {
-            e(e)
+            Timber.e(e)
         } finally {
             notifyAppUninstalled(ps, -1)
         }
@@ -520,7 +528,7 @@ class VAppManagerService : IAppManager.Stub() {
                     mRemoteCallbackList.getBroadcastItem(N)!!.onPackageInstalledAsUser(userId, pkg)
                 }
             } catch (e: RemoteException) {
-                e(e)
+                Timber.e(e)
             }
         }
         mRemoteCallbackList.finishBroadcast()
@@ -543,7 +551,7 @@ class VAppManagerService : IAppManager.Stub() {
                         .onPackageUninstalledAsUser(userId, pkg)
                 }
             } catch (e: RemoteException) {
-                e(e)
+                Timber.e(e)
             }
         }
         mRemoteCallbackList.finishBroadcast()

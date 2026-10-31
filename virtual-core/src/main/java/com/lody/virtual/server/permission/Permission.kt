@@ -1,19 +1,22 @@
-package com.lody.virtual.server.permission;
+package com.lody.virtual.server.permission
 
-import java.util.Objects;
+import java.util.Locale
+import java.util.Objects
 
 /**
  * @author Alberto Lazari
  * State of a permission.
  */
-public abstract class Permission {
-
-    protected static final String TAG = Permission.class.getSimpleName();
-
+abstract class Permission protected constructor(name: String?) {
     /**
      * Grant status for the permission.
      */
-    public enum Status {
+    enum class Status {
+        /**
+         * Permission is created by app, equivalent to granted, but should not be revocable.
+         */
+        DECLARED,
+
         /**
          * Permission has been permanently granted from dialog or settings.
          */
@@ -46,75 +49,68 @@ public abstract class Permission {
         DENIED
     }
 
-    protected final String name;
-    protected Status status;
+    val name: String?
 
-    protected Permission(final String name) {
-        Objects.requireNonNull(name);
-        this.name = name;
+    @JvmField
+    protected var status: Status? = null
+
+    init {
+        Objects.requireNonNull(name)
+        this.name = name
     }
 
-    public Permission(final String name, final Status status) {
-        this(name);
-        Objects.requireNonNull(status);
-        this.status = status;
-        ensureStatusValid();
+    constructor(name: String?, status: Status) : this(name) {
+        Objects.requireNonNull<Status?>(status)
+        this.status = status
+        ensureStatusValid()
     }
 
-    public Permission(final String name, final Permission permission) {
-        this(name, permission.status);
-    }
+    constructor(name: String?, permission: Permission) : this(name, permission.status!!)
 
-    Permission(final String name, final String statusString) {
-        this(name);
-        setStatusFromString(statusString);
+    internal constructor(name: String?, statusString: String?) : this(name) {
+        setStatusFromString(statusString)
     }
 
     /**
      * @return true if @status is valid for the current permission type
      */
-    public abstract boolean isValidStatus(final Status status);
+    abstract fun isValidStatus(status: Status?): Boolean
 
-    public void ensureStatusValid() {
+    fun ensureStatusValid() {
         if (!isValidStatus(status)) {
-            throw new RuntimeException(String.format("Invalid status for %s", toString()));
+            throw RuntimeException(String.format("Invalid status for %s", toString()))
         }
     }
 
-    public String getName() {
-        return name;
-    }
-
-    /**
-     * @return Readable permission name
-     * e.g. "android.permission.READ_CONTACTS" -> "Read contacts"
-     */
-    public String getReadableName() {
-        if (name == null) {
-            return "Unknown";
+    val readableName: String
+        /**
+         * @return Readable permission name
+         * e.g. "android.permission.READ_CONTACTS" -> "Read contacts"
+         */
+        get() {
+            if (name == null) {
+                return "Unknown"
+            }
+            val permissionName = name // Remove package
+                .replace("[a-z0-9.-]*".toRegex(), "") // Expand underscores
+                .replace("_", " ")
+                .lowercase(Locale.getDefault())
+            // Capitalize first letter
+            return (permissionName.substring(0, 1).uppercase(Locale.getDefault())
+                    + permissionName.substring(1))
         }
-        final String permissionName = name
-            // Remove package
-            .replaceAll("[a-z0-9.-]*", "")
-            // Expand underscores
-            .replace("_", " ")
-            .toLowerCase();
-        // Capitalize first letter
-        return permissionName.substring(0, 1).toUpperCase()
-            + permissionName.substring(1);
+
+    fun getStatus(): Status {
+        return status!!
     }
 
-    public Status getStatus() {
-        return status;
+    open fun setStatus(newStatus: Status) {
+        status = newStatus
+        ensureStatusValid()
     }
 
-    public void setStatus(final Status newStatus) {
-        status = newStatus;
-        ensureStatusValid();
-    }
-
-    public boolean isGranted() {
-        return status == Status.GRANTED;
+    open fun isGranted(): Boolean {
+        return status == Status.GRANTED
     }
 
     /**
@@ -122,20 +118,26 @@ public abstract class Permission {
      * If the current permission is of type RUNTIME, the status will include eventual flags in the
      * following format: "STATUS|deniedOnce|grantedOnce|override"
      */
-    public String statusToString() {
-        return status.name();
+    open fun statusToString(): String {
+        return status!!.name
     }
 
-    void setStatusFromString(final String statusString) {
-        Objects.requireNonNull(statusString);
-        final var newStatus = Status.valueOf(statusString.toUpperCase());
-        status = newStatus;
-        ensureStatusValid();
+    open fun setStatusFromString(statusString: String?) {
+        Objects.requireNonNull(statusString)
+        val newStatus = Status.valueOf(statusString!!.uppercase(Locale.getDefault()))
+        status = newStatus
+        ensureStatusValid()
     }
 
-    @Override
-    public String toString() {
-        return String.format("%s{name='%s', status='%s'}", getClass().getSimpleName(), name,
-                statusToString());
+    override fun toString(): String {
+        return String.format(
+            "%s{name='%s', status='%s'}", javaClass.getSimpleName(), name,
+            statusToString()
+        )
+    }
+
+    companion object {
+        @JvmStatic
+        protected val TAG: String = Permission::class.java.getSimpleName()
     }
 }

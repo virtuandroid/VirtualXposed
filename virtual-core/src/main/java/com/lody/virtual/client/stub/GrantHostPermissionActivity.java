@@ -67,9 +67,9 @@ public class GrantHostPermissionActivity extends AppCompatActivity {
         groupName = intent.getStringExtra(EXTRA_PERMISSION_GROUP_NAME);
         final int uid = intent.getIntExtra(EXTRA_APP_UID, 0);
         appName = intent.getStringExtra(EXTRA_APP_NAME);
-        permission = VPermissionManager.get()
+        permission = (RuntimePermission) VPermissionManager.get()
             .getAppPermissions(uid)
-            .getPermission(permissionName, RuntimePermission.class);
+            .getPermission(permissionName);
         final String message = getString(R.string.host_permission_denied_dialog_message,
                 appName, permission.getReadableName());
 

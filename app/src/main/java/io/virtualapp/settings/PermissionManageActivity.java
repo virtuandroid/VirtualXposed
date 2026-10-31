@@ -1,24 +1,13 @@
 package io.virtualapp.settings;
 
-import static android.content.pm.PackageManager.PERMISSION_GRANTED;
-import static android.content.pm.PackageManager.PERMISSION_DENIED;
-
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.PorterDuff.Mode;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
-import android.widget.TextView;
 
 import androidx.annotation.Nullable;
-import androidx.core.content.ContextCompat;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceCategory;
 import androidx.preference.PreferenceFragmentCompat;
@@ -26,23 +15,21 @@ import androidx.preference.PreferenceViewHolder;
 
 import static com.lody.virtual.server.permission.Permission.Status.*;
 
-import com.lody.virtual.helper.utils.VLog;
+import com.lody.virtual.server.permission.AppPermissions;
 import com.lody.virtual.server.permission.InstallPermission;
 import com.lody.virtual.server.permission.RuntimePermission;
 import com.lody.virtual.server.permission.Permission;
 import com.lody.virtual.server.permission.PermissionGroup;
 import com.lody.virtual.server.permission.VPermissionManager;
 
-import java.util.Collection;
-import java.util.HashSet;
+import org.jetbrains.annotations.NotNull;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
 import io.virtualapp.R;
 import io.virtualapp.abs.ui.VActivity;
-import io.virtualapp.abs.ui.VUiKit;
-import io.virtualapp.widgets.NonScrollListView;
 
 /**
  * @author Alberto Lazari
@@ -52,11 +39,11 @@ public class PermissionManageActivity extends VActivity {
     private static final String TAG = PermissionManageActivity.class.getSimpleName();
 
     public static final String EXTRA_APP_NAME =
-        "io.virtualapp.settings.extra.PERMISSION_MANAGE_APP_NAME";
+            "io.virtualapp.settings.extra.PERMISSION_MANAGE_APP_NAME";
     public static final String EXTRA_APP_UID =
-        "io.virtualapp.settings.extra.PERMISSION_MANAGE_APP_UID";
+            "io.virtualapp.settings.extra.PERMISSION_MANAGE_APP_UID";
     public static final String EXTRA_PERMISSIONS_TYPE =
-        "io.virtualapp.settings.extra.PERMISSION_MANAGE_PERMISSIONS_TYPE";
+            "io.virtualapp.settings.extra.PERMISSION_MANAGE_PERMISSIONS_TYPE";
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -66,14 +53,14 @@ public class PermissionManageActivity extends VActivity {
         final String appName = extras.getString(EXTRA_APP_NAME);
         final int uid = extras.getInt(EXTRA_APP_UID);
         final var type = (Class<? extends Permission>) extras
-            .getSerializable(EXTRA_PERMISSIONS_TYPE);
+                .getSerializable(EXTRA_PERMISSIONS_TYPE);
 
         setTitle(appName);
 
         getSupportFragmentManager()
-            .beginTransaction()
-            .replace(android.R.id.content, new PermissionsFragment(type, appName, uid))
-            .commit();
+                .beginTransaction()
+                .replace(android.R.id.content, new PermissionsFragment(type, appName, uid))
+                .commit();
     }
 
     public static class PermissionsFragment extends PreferenceFragmentCompat {
@@ -84,8 +71,8 @@ public class PermissionManageActivity extends VActivity {
         private static final String FOLLOW_GROUP_CATEGORY_KEY = "follow_group";
 
         private static final Map<Class<? extends Permission>, String> TYPE_TO_NAME_MAP = Map.of(
-            InstallPermission.class, "install",
-            RuntimePermission.class, "runtime"
+                InstallPermission.class, "install",
+                RuntimePermission.class, "runtime"
         );
 
         private final VPermissionManager permissionManager = VPermissionManager.get();
@@ -102,7 +89,7 @@ public class PermissionManageActivity extends VActivity {
         private PreferenceCategory groupCategory;
 
         public PermissionsFragment(final Class<? extends Permission> type, final String appName,
-                final int uid) {
+                                   final int uid) {
 
             this.type = type;
             this.appName = appName;
@@ -122,17 +109,26 @@ public class PermissionManageActivity extends VActivity {
 
             ctx = getActivity();
 
+            AppPermissions appPermissions = permissionManager.getAppPermissions(uid);
+            @NotNull Map<@org.jetbrains.annotations.Nullable String, ? extends Permission> allPermissions;
+
+            if (appPermissions != null) {
+                allPermissions = appPermissions.getAllPermissions(type);
+            } else {
+                allPermissions = Map.of();
+            }
+
             // Sort permissions
-            new TreeMap<>(permissionManager.getAppPermissions(uid).getAll(type))
-                .forEach((name, permission) -> {
-                    final var preference = createPermissionPreference(permission);
-                    getCategoryFor(permission).addPreference(preference);
-                });
+            new TreeMap<>(allPermissions)
+                    .forEach((name, permission) -> {
+                        final var preference = createPermissionPreference(permission);
+                        getCategoryFor(permission).addPreference(preference);
+                    });
 
             updateNoneTexts();
 
             final var overrideCategory = (PreferenceCategory)
-                findPreference("override_permissions");
+                    findPreference("override_permissions");
             if (!type.equals(PermissionGroup.class)) {
                 ctx.setTitle("Override " + TYPE_TO_NAME_MAP.get(type) + " permissions");
                 overrideCategory.setVisible(false);
@@ -142,14 +138,14 @@ public class PermissionManageActivity extends VActivity {
             // Set listener on permissions override settings
             TYPE_TO_NAME_MAP.keySet().forEach(overrideType -> {
                 findPreference("override_" + TYPE_TO_NAME_MAP.get(overrideType))
-                    .setOnPreferenceClickListener(preference -> {
-                        final Intent intent = new Intent(ctx, PermissionManageActivity.class);
-                        intent.putExtra(EXTRA_APP_NAME, appName);
-                        intent.putExtra(EXTRA_APP_UID, uid);
-                        intent.putExtra(EXTRA_PERMISSIONS_TYPE, overrideType);
-                        startActivity(intent);
-                        return true;
-                    });
+                        .setOnPreferenceClickListener(preference -> {
+                            final Intent intent = new Intent(ctx, PermissionManageActivity.class);
+                            intent.putExtra(EXTRA_APP_NAME, appName);
+                            intent.putExtra(EXTRA_APP_UID, uid);
+                            intent.putExtra(EXTRA_PERMISSIONS_TYPE, overrideType);
+                            startActivity(intent);
+                            return true;
+                        });
             });
             // Create an invisible preference to show the divider under last element
             final var phantomPreference = new Preference(ctx) {
@@ -172,6 +168,7 @@ public class PermissionManageActivity extends VActivity {
                 return groupCategory;
             }
             return switch (permission.getStatus()) {
+                case DECLARED -> allowedCategory;
                 case GRANTED -> allowedCategory;
                 case ALWAYS_ASK -> askCategory;
                 case UNREQUESTED -> deniedCategory;
@@ -228,7 +225,8 @@ public class PermissionManageActivity extends VActivity {
                             category.setVisible(true);
                         }
                     }
-                };
+                }
+                ;
             });
         }
 
@@ -262,8 +260,8 @@ public class PermissionManageActivity extends VActivity {
             final var name = permission.getName();
             final var readableName = permission.getReadableName();
             final var groupIconRes = permission instanceof RuntimePermission runtimePermission
-                ? runtimePermission.getGroupIconRes()
-                : PermissionGroup.getGroupIconRes(name);
+                    ? runtimePermission.getGroupIconRes()
+                    : PermissionGroup.getGroupIconRes(name);
             final var preference = new PermissionPreference(ctx, permission);
             preference.setKey("permission_manage_preference_" + name);
             preference.setTitle(readableName);
@@ -312,14 +310,17 @@ public class PermissionManageActivity extends VActivity {
             private void showContextMenu() {
                 final PopupMenu popupMenu = new PopupMenu(ctx, holder.itemView);
                 if (permission instanceof InstallPermission) {
-                    popupMenu.inflate(R.menu.install_permission_manage_menu);
+                    // Cannot change declared permissions, it would break assumptions
+                    if (permission.getStatus() != DECLARED) {
+                        popupMenu.inflate(R.menu.install_permission_manage_menu);
+                    }
                 } else if (permission instanceof RuntimePermission runtimePermission) {
                     popupMenu.inflate(R.menu.runtime_permission_manage_menu);
                     if (runtimePermission.hasPermissionGroup()) {
                         // Show "Follow group" menu action
                         popupMenu.getMenu()
-                            .findItem(R.id.action_group)
-                            .setVisible(true);
+                                .findItem(R.id.action_group)
+                                .setVisible(true);
                     }
                 } else if (permission instanceof PermissionGroup) {
                     popupMenu.inflate(R.menu.permission_group_manage_menu);
@@ -338,13 +339,16 @@ public class PermissionManageActivity extends VActivity {
 
             private void handleMenuChoice(final int choice) {
                 if (choice == R.id.action_group) {
-                    permissionManager.updatePermission(RuntimePermission.class,
-                        permission.getName(), uid,
-                        newPermission -> {
-                            final var group = newPermission.getPermissionGroup();
-                            newPermission.followGroup();
-                            newPermission.setStatus(group.getStatus());
-                        });
+                    permissionManager.updatePermission(
+                            RuntimePermission.class,
+                            permission.getName(), uid,
+                            newPermission -> {
+                                final var group = newPermission.getPermissionGroup();
+                                newPermission.followGroup();
+                                newPermission.setStatus(group.getStatus());
+                                return null;
+                            }
+                    );
                     updateCategories();
                     return;
                 }
@@ -355,10 +359,11 @@ public class PermissionManageActivity extends VActivity {
                 if (choice == R.id.action_allow) {
                     permissionManager.allowPermission(permission.getName(), uid);
                 } else if (choice == R.id.action_ask) {
-                    permissionManager.updatePermission(permission.getName(), uid,
-                        newPermission -> {
-                            newPermission.setStatus(ALWAYS_ASK);
-                        });
+                    permissionManager.updatePermission(RuntimePermission.class, permission.getName(), uid,
+                            newPermission -> {
+                                newPermission.setStatus(ALWAYS_ASK);
+                                return null;
+                            });
                 } else if (choice == R.id.action_do_not_allow) {
                     permissionManager.doNotAllowPermission(permission.getName(), uid);
                 }

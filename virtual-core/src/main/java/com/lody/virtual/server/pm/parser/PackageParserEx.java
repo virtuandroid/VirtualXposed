@@ -56,25 +56,28 @@ public class PackageParserEx {
     public static VPackage parsePackage(File packageFile) throws Throwable {
         PackageParser parser = PackageParserCompat.createParser(packageFile);
         PackageParser.Package p = PackageParserCompat.parsePackage(parser, packageFile, 0);
-        if (p.requestedPermissions.contains("android.permission.FAKE_PACKAGE_SIGNATURE")
-                && p.mAppMetaData != null
-                && p.mAppMetaData.containsKey("fake-signature")) {
-            String sig = p.mAppMetaData.getString("fake-signature");
-            buildSignature(p, new Signature[]{new Signature(sig)});
-            VLog.d(TAG, "Using fake-signature feature on : " + p.packageName);
-        } else {
-            try {
-                PackageParserCompat.collectCertificates(parser, p, PackageParser.PARSE_IS_SYSTEM);
-            } catch (Throwable e) {
-                VLog.e(TAG, "collectCertificates failed", e);
-                if (VirtualCore.get().getContext().getFileStreamPath(Constants.FAKE_SIGNATURE_FLAG).exists()) {
-                    VLog.w(TAG, "Using fake signature: " + p.packageName);
-                    buildSignature(p, new Signature[]{new Signature(FAKE_SIG)});
-                } else {
-                    throw e;
-                }
-            }
-        }
+        PackageParserCompat.collectCertificates(parser, p, PackageParser.PARSE_IS_SYSTEM);
+
+//        if (p.requestedPermissions.contains("android.permission.FAKE_PACKAGE_SIGNATURE")
+//                && p.mAppMetaData != null
+//                && p.mAppMetaData.containsKey("fake-signature")) {
+//            String sig = p.mAppMetaData.getString("fake-signature");
+//            buildSignature(p, new Signature[]{new Signature(sig)});
+//            VLog.d(TAG, "Using fake-signature feature on : " + p.packageName);
+//        } else {
+//            try {
+//                PackageParserCompat.collectCertificates(parser, p, PackageParser.PARSE_IS_SYSTEM);
+//            } catch (Throwable e) {
+//                VLog.e(TAG, "collectCertificates failed", e);
+//                if (VirtualCore.get().getContext().getFileStreamPath(Constants.FAKE_SIGNATURE_FLAG).exists()) {
+//                    VLog.w(TAG, "Using fake signature: " + p.packageName);
+//                    buildSignature(p, new Signature[]{new Signature(FAKE_SIG)});
+//                } else {
+//                    throw e;
+//                }
+//            }
+//        }
+
         return buildPackageCache(p);
     }
 
@@ -177,6 +180,11 @@ public class PackageParserEx {
         cache.providers = new ArrayList<>(p.providers.size());
         cache.instrumentation = new ArrayList<>(p.instrumentation.size());
         cache.permissions = new ArrayList<>(p.permissions.size());
+
+        for (PackageParser.Permission permission : p.permissions) {
+            cache.permissions.add(new VPackage.PermissionComponent(permission));
+        }
+
         cache.permissionGroups = new ArrayList<>(p.permissionGroups.size());
 
         for (PackageParser.Activity activity : p.activities) {

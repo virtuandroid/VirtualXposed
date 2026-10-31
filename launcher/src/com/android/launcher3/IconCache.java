@@ -223,7 +223,7 @@ public class IconCache {
                 addIconToDBAndMemCache(app, info, userSerial, false /*replace existing*/);
             }
         } catch (NameNotFoundException e) {
-            Log.d(TAG, "Package not found", e);
+            // Log.d(TAG, "Package not found", e);
         }
     }
 

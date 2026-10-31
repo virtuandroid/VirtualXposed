@@ -30,7 +30,7 @@ import java.util.Set;
 /**
  * @author Lody
  */
-
+// https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/content/pm/PackageParser.java#6761
 public class VPackage implements Parcelable {
 
     public static final Creator<VPackage> CREATOR = new Creator<VPackage>() {

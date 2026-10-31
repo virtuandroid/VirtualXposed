@@ -284,8 +284,7 @@ public class GrantPermissionsActivity extends Activity {
         if (!hasBackgroundPermission || permissionName.equals(Manifest.permission.BODY_SENSORS)) {
             onlyOnceButton.setVisibility(TextView.GONE);
         }
-        final var coarseLocation = permissionManager.getPermission(COARSE_LOCATION, uid,
-                RuntimePermission.class);
+        final var coarseLocation = (RuntimePermission) permissionManager.getPermission(COARSE_LOCATION, uid);
         if (permissionName.equals(FINE_LOCATION) && coarseLocation != null && coarseLocation.isGranted()) {
             final var locationChangeMessage = getString(
                     R.string.location_change_request_dialog_message, appName);

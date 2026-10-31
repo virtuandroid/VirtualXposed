@@ -893,8 +893,7 @@ class MethodProxies {
 
         @Override
         public Object call(Object who, Method method, Object... args) throws Throwable {
-
-            if (args.length == 2 && args[0] instanceof String && args[1] instanceof String) {
+            if (args.length >= 2 && args[0] instanceof String && args[1] instanceof String) {
 
                 PackageManager pm = VirtualCore.getPM();
 

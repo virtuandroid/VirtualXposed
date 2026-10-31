@@ -1,5 +1,6 @@
 package com.lody.virtual.server.security
 
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import com.lody.virtual.client.ipc.VActivityManager
 import com.lody.virtual.client.ipc.VPackageManager
@@ -10,6 +11,9 @@ import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
 object SecurityUtils {
+    private val permissionManager by lazy {
+        VPermissionManager.get()
+    }
     @Throws
     private fun getCallingUidSafe(): Int {
         val uid = VBinder.getCallingUid()
@@ -110,5 +114,31 @@ object SecurityUtils {
         return (userId != VUserHandle.getCallingUserId()
                 // Always allow the system to perform cross-user actions
                 && callingUid != VActivityManager.get().systemPid)
+    }
+
+    fun assertActivityAllowed(activity: ActivityInfo) {
+        if (!isActivityAllowed(activity)) {
+            throw SecurityException("Activity not accessible from calling package!")
+        }
+    }
+
+    fun isActivityAllowed(activity: ActivityInfo): Boolean {
+        val callingPackage = VBinder.getCallingPackageName()
+
+        // Apps can always start their own activities
+        if (callingPackage == activity.packageName) {
+            return true
+        }
+
+        // External app cannot start non-exported activities
+        if (!activity.exported) {
+            return false
+        }
+
+        // If a permission exists then ensure the caller has it
+        val permission = activity.permission.takeUnless { it.isNullOrBlank() } ?: return true
+        val callingUid = VBinder.getCallingUid()
+
+        return permissionManager.checkPermission(permission, callingUid) == PackageManager.PERMISSION_GRANTED
     }
 }

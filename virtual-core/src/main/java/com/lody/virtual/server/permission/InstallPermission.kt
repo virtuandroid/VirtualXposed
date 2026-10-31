@@ -1,4 +1,4 @@
-package com.lody.virtual.server.permission;
+package com.lody.virtual.server.permission
 
 /**
  * @author Alberto Lazari
@@ -6,22 +6,14 @@ package com.lody.virtual.server.permission;
  * of signature and system permissions and permissions that cannot be found on the system.
  * Their status can be either GRANTED or DENIED.
  */
-public class InstallPermission extends Permission {
+class InstallPermission : Permission {
+    constructor(name: String?, status: Status) : super(name, status)
 
-    public InstallPermission(final String name, final Status status) {
-        super(name, status);
-    }
+    constructor(name: String?, permission: InstallPermission) : super(name, permission)
 
-    public InstallPermission(final String name, final InstallPermission permission) {
-        super(name, permission);
-    }
+    internal constructor(name: String?, statusString: String?) : super(name, statusString)
 
-    InstallPermission(final String name, final String statusString) {
-        super(name, statusString);
-    }
-
-    @Override
-    public boolean isValidStatus(final Status status) {
-        return status == Status.GRANTED || status == Status.DENIED;
+    override fun isValidStatus(status: Status?): Boolean {
+        return status == Status.GRANTED || status == Status.DENIED || status == Status.DECLARED
     }
 }
