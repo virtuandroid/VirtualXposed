@@ -71,7 +71,7 @@ class VPackageManagerService : IPackageManager.Stub() {
     private val mProvidersByAuthority =
         ConcurrentHashMap<String, ConcurrentHashMap<String, ProviderComponent>>()
 
-    private val mPackages: MutableMap<String, VPackage> = PackageCacheManager.PACKAGE_CACHE
+    private val mPackages: ConcurrentHashMap<String, VPackage> = PackageCacheManager.PACKAGE_CACHE
 
 
     init {
@@ -154,20 +154,18 @@ class VPackageManagerService : IPackageManager.Stub() {
     }
 
     override fun getSharedLibraries(packageName: String?): List<String?>? {
-        synchronized(mPackages) {
-            val p = mPackages[packageName]
-            if (p != null) {
-                val list = ArrayList<String?>()
-                if (p.usesLibraries != null) {
-                    list.addAll(p.usesLibraries)
-                }
-                if (p.usesOptionalLibraries != null) {
-                    list.addAll(p.usesOptionalLibraries)
-                }
-                return list
+        val p = mPackages[packageName]
+        if (p != null) {
+            val list = ArrayList<String?>()
+            if (p.usesLibraries != null) {
+                list.addAll(p.usesLibraries)
             }
-            return null
+            if (p.usesOptionalLibraries != null) {
+                list.addAll(p.usesOptionalLibraries)
+            }
+            return list
         }
+        return null
     }
 
     override fun checkPermission(permName: String?, pkgName: String?, userId: Int): Int {
@@ -183,12 +181,10 @@ class VPackageManagerService : IPackageManager.Stub() {
     override fun getPackageInfo(packageName: String?, flags: Int, userId: Int): PackageInfo? {
         checkUserId(userId)
         enforceCallingUser(userId)
-        synchronized(mPackages) {
-            val p = mPackages[packageName]
-            if (p != null) {
-                val ps = p.mExtras
-                return generatePackageInfo(p, ps, flags, userId)
-            }
+        val p = mPackages[packageName]
+        if (p != null) {
+            val ps = p.mExtras
+            return generatePackageInfo(p, ps, flags, userId)
         }
         return null
     }
@@ -240,35 +236,33 @@ class VPackageManagerService : IPackageManager.Stub() {
 
         val flags = updateFlagsNought(flags)
 
-        synchronized(mPackages) {
-            val p = mPackages[component.packageName]
-            if (p != null) {
-                val ps = p.mExtras
-                val a = mActivities.mActivities[component]
-                if (a != null) {
-                    val activityInfo = PackageParserEx.generateActivityInfo(
-                        a,
-                        flags,
-                        ps.readUserState(userId),
-                        userId
-                    )
+        val p = mPackages[component.packageName]
+        if (p != null) {
+            val ps = p.mExtras
+            val a = mActivities.mActivities[component]
+            if (a != null) {
+                val activityInfo = PackageParserEx.generateActivityInfo(
+                    a,
+                    flags,
+                    ps.readUserState(userId),
+                    userId
+                )
 
-                    val logMessage: LogMessage = LogMessage.GetActivity(
-                        component.packageName,
-                        component.className,
-                        activityInfo.exported
-                    )
+                val logMessage: LogMessage = LogMessage.GetActivity(
+                    component.packageName,
+                    component.className,
+                    activityInfo.exported
+                )
 
-                    val holder = LogMessageHolder.Builder(logMessage).build()
-                    VLoggingManagerService.get().log(holder)
+                val holder = LogMessageHolder.Builder(logMessage).build()
+                VLoggingManagerService.get().log(holder)
 
-                    if (!isActivityAllowed(activityInfo)) {
-                        throw SecurityException("Activity not accessible from calling package!")
-                    }
-
-                    ComponentFixer.fixComponentInfo(ps, activityInfo, userId)
-                    return activityInfo
+                if (!isActivityAllowed(activityInfo)) {
+                    throw SecurityException("Activity not accessible from calling package!")
                 }
+
+                ComponentFixer.fixComponentInfo(ps, activityInfo, userId)
+                return activityInfo
             }
         }
         return null
@@ -279,19 +273,17 @@ class VPackageManagerService : IPackageManager.Stub() {
         intent: Intent,
         resolvedType: String?
     ): Boolean {
-        synchronized(mPackages) {
-            val a = mActivities.mActivities[component] ?: return false
-            for (i in a.intents.indices) {
-                if (a.intents[i].filter.match(
-                        intent.action, resolvedType, intent.scheme, intent.data,
-                        intent.categories, TAG
-                    ) >= 0
-                ) {
-                    return true
-                }
+        val a = mActivities.mActivities[component] ?: return false
+        for (i in a.intents.indices) {
+            if (a.intents[i].filter.match(
+                    intent.action, resolvedType, intent.scheme, intent.data,
+                    intent.categories, TAG
+                ) >= 0
+            ) {
+                return true
             }
-            return false
         }
+        return false
     }
 
     override fun getReceiverInfo(component: ComponentName, flags: Int, userId: Int): ActivityInfo? {
@@ -300,34 +292,32 @@ class VPackageManagerService : IPackageManager.Stub() {
         val flags = updateFlagsNought(flags)
         val callingPackage = VBinder.getCallingPackageName()
 
-        synchronized(mPackages) {
-            val p = mPackages[component.packageName]
-            if (p != null) {
-                val ps = p.mExtras
-                val a = mReceivers.mActivities[component]
-                if (a != null) {
-                    val receiverInfo = PackageParserEx.generateActivityInfo(
-                        a,
-                        flags,
-                        ps.readUserState(userId),
-                        userId
-                    )
+        val p = mPackages[component.packageName]
+        if (p != null) {
+            val ps = p.mExtras
+            val a = mReceivers.mActivities[component]
+            if (a != null) {
+                val receiverInfo = PackageParserEx.generateActivityInfo(
+                    a,
+                    flags,
+                    ps.readUserState(userId),
+                    userId
+                )
 
-                    val logMessage: LogMessage = LogMessage.GetReceiver(
-                        component.packageName,
-                        component.className,
-                        receiverInfo.exported
-                    )
-                    val holder = LogMessageHolder.Builder(logMessage).build()
-                    VLoggingManagerService.get().log(holder)
+                val logMessage: LogMessage = LogMessage.GetReceiver(
+                    component.packageName,
+                    component.className,
+                    receiverInfo.exported
+                )
+                val holder = LogMessageHolder.Builder(logMessage).build()
+                VLoggingManagerService.get().log(holder)
 
-                    if (!isActivityAllowed(receiverInfo)) {
-                        throw SecurityException("Unable to access non-exported receiver in " + p.packageName + " from " + callingPackage)
-                    }
-
-                    ComponentFixer.fixComponentInfo(ps, receiverInfo, userId)
-                    return receiverInfo
+                if (!isActivityAllowed(receiverInfo)) {
+                    throw SecurityException("Unable to access non-exported receiver in " + p.packageName + " from " + callingPackage)
                 }
+
+                ComponentFixer.fixComponentInfo(ps, receiverInfo, userId)
+                return receiverInfo
             }
         }
         return null
@@ -341,34 +331,32 @@ class VPackageManagerService : IPackageManager.Stub() {
         val flags = updateFlagsNought(flags)
         val callingPackage = VBinder.getCallingPackageName()
 
-        synchronized(mPackages) {
-            val p = mPackages[component.packageName]
-            if (p != null) {
-                val ps = p.mExtras
-                val s = mServices.mServices[component]
+        val p = mPackages[component.packageName]
+        if (p != null) {
+            val ps = p.mExtras
+            val s = mServices.mServices[component]
 
-                if (s != null) {
-                    val serviceInfo = PackageParserEx.generateServiceInfo(
-                        s,
-                        flags,
-                        ps.readUserState(userId),
-                        userId
-                    )
-                    val logMessage: LogMessage = GetService(
-                        component.packageName,
-                        component.className,
-                        s.info.exported
-                    )
-                    val holder = LogMessageHolder.Builder(logMessage).build()
-                    VLoggingManagerService.get().log(holder)
+            if (s != null) {
+                val serviceInfo = PackageParserEx.generateServiceInfo(
+                    s,
+                    flags,
+                    ps.readUserState(userId),
+                    userId
+                )
+                val logMessage: LogMessage = GetService(
+                    component.packageName,
+                    component.className,
+                    s.info.exported
+                )
+                val holder = LogMessageHolder.Builder(logMessage).build()
+                VLoggingManagerService.get().log(holder)
 
-                    if (!isServiceAllowed(serviceInfo)) {
-                        throw SecurityException("Unable to access non-exported service in " + p.packageName + " from " + callingPackage)
-                    }
-
-                    ComponentFixer.fixComponentInfo(ps, serviceInfo, userId)
-                    return serviceInfo
+                if (!isServiceAllowed(serviceInfo)) {
+                    throw SecurityException("Unable to access non-exported service in " + p.packageName + " from " + callingPackage)
                 }
+
+                ComponentFixer.fixComponentInfo(ps, serviceInfo, userId)
+                return serviceInfo
             }
         }
         return null
@@ -381,33 +369,31 @@ class VPackageManagerService : IPackageManager.Stub() {
         val flags = updateFlagsNought(flags)
         val callingPackage = VBinder.getCallingPackageName()
 
-        synchronized(mPackages) {
-            val p = mPackages[component.packageName]
-            if (p != null) {
-                val ps = p.mExtras
-                val provider = mProvidersByComponent[component.packageName]?.get(component)
-                if (provider != null) {
-                    val logMessage: LogMessage = LogMessage.BindService(
-                        provider.owner.packageName,
-                        component.className,
-                        provider.info.exported
-                    )
-                    val holder = LogMessageHolder.Builder(logMessage).build()
-                    VLoggingManagerService.get().log(holder)
+        val p = mPackages[component.packageName]
+        if (p != null) {
+            val ps = p.mExtras
+            val provider = mProvidersByComponent[component.packageName]?.get(component)
+            if (provider != null) {
+                val logMessage: LogMessage = LogMessage.BindService(
+                    provider.owner.packageName,
+                    component.className,
+                    provider.info.exported
+                )
+                val holder = LogMessageHolder.Builder(logMessage).build()
+                VLoggingManagerService.get().log(holder)
 
-                    val providerInfo = PackageParserEx.generateProviderInfo(
-                        provider,
-                        flags,
-                        ps.readUserState(userId),
-                        userId
-                    )
+                val providerInfo = PackageParserEx.generateProviderInfo(
+                    provider,
+                    flags,
+                    ps.readUserState(userId),
+                    userId
+                )
 
-                    if (!isProviderAllowed(providerInfo)) {
-                        throw SecurityException("Unable to access non-exported provider in " + p.packageName + " from " + callingPackage)
-                    }
-                    ComponentFixer.fixComponentInfo(ps, providerInfo, userId)
-                    return providerInfo
+                if (!isProviderAllowed(providerInfo)) {
+                    throw SecurityException("Unable to access non-exported provider in " + p.packageName + " from " + callingPackage)
                 }
+                ComponentFixer.fixComponentInfo(ps, providerInfo, userId)
+                return providerInfo
             }
         }
         return null
@@ -496,28 +482,26 @@ class VPackageManagerService : IPackageManager.Stub() {
             }
         }
 
-        synchronized(mPackages) {
-            val pkgName = intent.getPackage()
-            val pkg = mPackages[pkgName]
-            val list = if (pkg != null) {
-                mActivities.queryIntentForPackage(
-                    intent,
-                    resolvedType,
-                    flags,
-                    pkg.activities,
-                    userId
-                )
-            } else {
-                mActivities.queryIntent(
-                    intent,
-                    resolvedType,
-                    flags,
-                    userId
-                )
-            }
-            return list?.filter { resolveInfo ->
-                isResolveInfoAllowed(resolveInfo)
-            }
+        val pkgName = intent.getPackage()
+        val pkg = pkgName?.let { mPackages[it] }
+        val list = if (pkg != null) {
+            mActivities.queryIntentForPackage(
+                intent,
+                resolvedType,
+                flags,
+                pkg.activities,
+                userId
+            )
+        } else {
+            mActivities.queryIntent(
+                intent,
+                resolvedType,
+                flags,
+                userId
+            )
+        }
+        return list?.filter { resolveInfo ->
+            isResolveInfoAllowed(resolveInfo)
         }
     }
 
@@ -543,30 +527,27 @@ class VPackageManagerService : IPackageManager.Stub() {
                 emptyList()
             }
         }
-        val callingPackage = VBinder.getCallingPackageName()
 
-        synchronized(mPackages) {
-            val pkgName = intent.getPackage()
-            val pkg = mPackages[pkgName]
-            val list = if (pkg != null) {
-                mReceivers.queryIntentForPackage(
-                    intent,
-                    resolvedType,
-                    flags,
-                    pkg.receivers,
-                    userId
-                )
-            } else {
-                mReceivers.queryIntent(
-                    intent,
-                    resolvedType,
-                    flags,
-                    userId
-                )
-            }
-            return list?.filter {
-                isResolveInfoAllowed(it)
-            }
+        val pkgName = intent.getPackage()
+        val pkg = pkgName?.let { mPackages[it] }
+        val list = if (pkg != null) {
+            mReceivers.queryIntentForPackage(
+                intent,
+                resolvedType,
+                flags,
+                pkg.receivers,
+                userId
+            )
+        } else {
+            mReceivers.queryIntent(
+                intent,
+                resolvedType,
+                flags,
+                userId
+            )
+        }
+        return list?.filter {
+            isResolveInfoAllowed(it)
         }
     }
 
@@ -615,28 +596,26 @@ class VPackageManagerService : IPackageManager.Stub() {
             }
         }
 
-        synchronized(mPackages) {
-            val pkgName = intent.getPackage()
-            val pkg = mPackages[pkgName]
-            val list = if (pkg != null) {
-                mServices.queryIntentForPackage(
-                    intent,
-                    resolvedType,
-                    flags,
-                    pkg.services,
-                    userId
-                )
-            } else {
-                mServices.queryIntent(
-                    intent,
-                    resolvedType,
-                    flags,
-                    userId
-                )
-            }
-            return list?.filter {
-                isResolveInfoAllowed(it)
-            }
+        val pkgName = intent.getPackage()
+        val pkg = pkgName?.let { mPackages[it] }
+        val list = if (pkg != null) {
+            mServices.queryIntentForPackage(
+                intent,
+                resolvedType,
+                flags,
+                pkg.services,
+                userId
+            )
+        } else {
+            mServices.queryIntent(
+                intent,
+                resolvedType,
+                flags,
+                userId
+            )
+        }
+        return list?.filter {
+            isResolveInfoAllowed(it)
         }
     }
 
@@ -664,29 +643,26 @@ class VPackageManagerService : IPackageManager.Stub() {
             }
         }
 
-        val callingPackage = VBinder.getCallingPackageName()
-        synchronized(mPackages) {
-            val pkgName = intent.getPackage()
-            val pkg = mPackages[pkgName]
-            val list = if (pkg != null) {
-                mProviders.queryIntentForPackage(
-                    intent,
-                    resolvedType,
-                    flags,
-                    pkg.providers,
-                    userId
-                )
-            } else {
-                mProviders.queryIntent(
-                    intent,
-                    resolvedType,
-                    flags,
-                    userId
-                )
-            }
-            return list?.filter {
-                isResolveInfoAllowed(it)
-            }
+        val pkgName = intent.getPackage()
+        val pkg = pkgName?.let { mPackages[it] }
+        val list = if (pkg != null) {
+            mProviders.queryIntentForPackage(
+                intent,
+                resolvedType,
+                flags,
+                pkg.providers,
+                userId
+            )
+        } else {
+            mProviders.queryIntent(
+                intent,
+                resolvedType,
+                flags,
+                userId
+            )
+        }
+        return list?.filter {
+            isResolveInfoAllowed(it)
         }
     }
 
@@ -699,23 +675,20 @@ class VPackageManagerService : IPackageManager.Stub() {
         checkUserId(userId)
         enforceCallingUser(userId)
 
-        val callingPackage = VBinder.getCallingPackageName()
         val newFlags = updateFlagsNought(flags)
         val providerList = mutableListOf<ProviderInfo>()
 
-        synchronized(mPackages) {
-            mProvidersByComponent.values.forEach {
-                it.values.forEach { p ->
-                    val ps = p.owner.mExtras
-                    if (processName == null || ps.appId == VUserHandle.getAppId(uid) && p.info.processName == processName) {
-                        val providerInfo = PackageParserEx.generateProviderInfo(
-                            p,
-                            newFlags,
-                            ps.readUserState(userId),
-                            userId
-                        )
-                        providerList.add(providerInfo)
-                    }
+        mProvidersByComponent.values.forEach {
+            it.values.forEach { p ->
+                val ps = p.owner.mExtras
+                if (processName == null || ps.appId == VUserHandle.getAppId(uid) && p.info.processName == processName) {
+                    val providerInfo = PackageParserEx.generateProviderInfo(
+                        p,
+                        newFlags,
+                        ps.readUserState(userId),
+                        userId
+                    )
+                    providerList.add(providerInfo)
                 }
             }
         }
@@ -771,12 +744,10 @@ class VPackageManagerService : IPackageManager.Stub() {
 
     override fun getPermissionInfo(name: String?, flags: Int): PermissionInfo? {
         val callingPackage = VBinder.getCallingPackageName()
-        synchronized(mPackages) {
-            val p = mPermissions[callingPackage]?.get(name)
-            if (p != null) {
-                @Suppress("DEPRECATION")
-                return PermissionInfo(p.info)
-            }
+        val p = mPermissions[callingPackage]?.get(name)
+        if (p != null) {
+            @Suppress("DEPRECATION")
+            return PermissionInfo(p.info)
         }
         return null
     }
@@ -785,30 +756,24 @@ class VPackageManagerService : IPackageManager.Stub() {
         group: String?,
         flags: Int
     ): List<PermissionInfo?>? {
-        synchronized(mPackages) {
-            return null
-        }
+        return null
     }
 
     override fun getPermissionGroupInfo(name: String?, flags: Int): PermissionGroupInfo? {
         val callingPackage = VBinder.getCallingPackageName()
-        synchronized(mPackages) {
-            val p = mPermissionGroups[callingPackage]?.get(name)
-            if (p != null) {
-                @Suppress("DEPRECATION")
-                return PermissionGroupInfo(p.info)
-            }
+        val p = mPermissionGroups[callingPackage]?.get(name)
+        if (p != null) {
+            @Suppress("DEPRECATION")
+            return PermissionGroupInfo(p.info)
         }
         return null
     }
 
     override fun getAllPermissionGroups(flags: Int): List<PermissionGroupInfo>? {
         val callingPackage = VBinder.getCallingPackageName()
-        synchronized(mPackages) {
-            return mPermissionGroups[callingPackage]?.values?.map { pg ->
-                @Suppress("DEPRECATION")
-                PermissionGroupInfo(pg.info)
-            }
+        return mPermissionGroups[callingPackage]?.values?.map { pg ->
+            @Suppress("DEPRECATION")
+            PermissionGroupInfo(pg.info)
         }
     }
 
@@ -820,38 +785,36 @@ class VPackageManagerService : IPackageManager.Stub() {
         val flags = updateFlagsNought(flags)
         val callingPackage = VBinder.getCallingPackageName()
 
-        synchronized(mPackages) {
-            val provider = mProvidersByAuthority[callingPackage]?.get(name)
-                ?: mProvidersByAuthority.firstNotNullOfOrNull {
-                    it.value[name]
-                }
+        val provider = mProvidersByAuthority[callingPackage]?.get(name)
+            ?: mProvidersByAuthority.firstNotNullOfOrNull {
+                it.value[name]
+            }
 
-            if (provider != null) {
-                val ps = provider.owner.mExtras
-                val providerInfo = PackageParserEx.generateProviderInfo(
-                    provider,
-                    flags,
-                    ps.readUserState(userId),
-                    userId
-                )
-                if (providerInfo != null) {
-                    VLoggingClient.get().log(
-                        GetProvider(
-                            providerInfo.packageName,
-                            provider.getComponentName().className,
-                            providerInfo.exported
-                        )
+        if (provider != null) {
+            val ps = provider.owner.mExtras
+            val providerInfo = PackageParserEx.generateProviderInfo(
+                provider,
+                flags,
+                ps.readUserState(userId),
+                userId
+            )
+            if (providerInfo != null) {
+                VLoggingClient.get().log(
+                    GetProvider(
+                        providerInfo.packageName,
+                        provider.getComponentName().className,
+                        providerInfo.exported
                     )
-                    val p = mPackages[providerInfo.packageName]
+                )
+                val p = mPackages[providerInfo.packageName]
 
-                    if (!isProviderAllowed(providerInfo)) {
-                        throw SecurityException("Unable to access non-exported provider in " + providerInfo.packageName + " from " + callingPackage)
-                    }
-
-                    val settings = p?.mExtras
-                    ComponentFixer.fixComponentInfo(settings, providerInfo, userId)
-                    return providerInfo
+                if (!isProviderAllowed(providerInfo)) {
+                    throw SecurityException("Unable to access non-exported provider in " + providerInfo.packageName + " from " + callingPackage)
                 }
+
+                val settings = p?.mExtras
+                ComponentFixer.fixComponentInfo(settings, providerInfo, userId)
+                return providerInfo
             }
         }
         return null
@@ -866,17 +829,15 @@ class VPackageManagerService : IPackageManager.Stub() {
         enforceCallingUser(userId)
 
         val flags = updateFlagsNought(flags)
-        synchronized(mPackages) {
-            val p = mPackages[packageName]
-            if (p != null) {
-                val ps = p.mExtras
-                return PackageParserEx.generateApplicationInfo(
-                    p,
-                    flags,
-                    ps.readUserState(userId),
-                    userId
-                )
-            }
+        val p = mPackages[packageName]
+        if (p != null) {
+            val ps = p.mExtras
+            return PackageParserEx.generateApplicationInfo(
+                p,
+                flags,
+                ps.readUserState(userId),
+                userId
+            )
         }
         return null
     }
@@ -886,7 +847,7 @@ class VPackageManagerService : IPackageManager.Stub() {
         checkUserId(userId)
         enforceCallingUser(userId)
 
-        synchronized(this) {
+        synchronized(mPackages) {
             return mPackages.values.filter { p ->
                 val settings = p.mExtras
                 VUserHandle.getUid(userId, settings.appId) == uid
@@ -898,14 +859,12 @@ class VPackageManagerService : IPackageManager.Stub() {
         checkUserId(userId)
         enforceCallingUser(userId)
 
-        synchronized(mPackages) {
-            val p = mPackages[packageName]
-            if (p != null) {
-                val ps = p.mExtras
-                return VUserHandle.getUid(userId, ps.appId)
-            }
-            return -1
+        val p = mPackages[packageName]
+        if (p != null) {
+            val ps = p.mExtras
+            return VUserHandle.getUid(userId, ps.appId)
         }
+        return -1
     }
 
     override fun getNameForUid(uid: Int): String? {
@@ -923,19 +882,17 @@ class VPackageManagerService : IPackageManager.Stub() {
 
 
     override fun querySharedPackages(packageName: String?): List<String?> {
-        synchronized(mPackages) {
-            val p = mPackages[packageName]
-            if (p?.mSharedUserId == null) {
-                return emptyList()
-            }
-            val list = ArrayList<String?>()
-            for (one in mPackages.values) {
-                if (TextUtils.equals(one.mSharedUserId, p.mSharedUserId)) {
-                    list.add(one.packageName)
-                }
-            }
-            return list
+        val p = mPackages[packageName]
+        if (p?.mSharedUserId == null) {
+            return emptyList()
         }
+        val list = ArrayList<String?>()
+        for (one in mPackages.values) {
+            if (TextUtils.equals(one.mSharedUserId, p.mSharedUserId)) {
+                list.add(one.packageName)
+            }
+        }
+        return list
     }
 
     @Throws(RemoteException::class)

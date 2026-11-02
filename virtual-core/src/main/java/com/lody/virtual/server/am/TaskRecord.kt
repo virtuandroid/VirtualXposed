@@ -1,49 +1,42 @@
-package com.lody.virtual.server.am;
+package com.lody.virtual.server.am
 
-import android.content.ComponentName;
-import android.content.Intent;
-
-import com.lody.virtual.remote.AppTaskInfo;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import android.content.Intent
+import android.os.SystemClock
+import com.lody.virtual.remote.AppTaskInfo
+import java.util.Collections
 
 /**
  * @author Lody
  */
+internal class TaskRecord(
+    var taskId: Int,
+    var userId: Int,
+    var affinity: String?,
+    var taskRoot: Intent?,
+) {
+    val activities: MutableList<ActivityRecord> =
+        Collections.synchronizedList(ArrayList<ActivityRecord?>())
+    val createdAt = SystemClock.elapsedRealtime()
 
-class TaskRecord {
-    public final List<ActivityRecord> activities = Collections.synchronizedList(new ArrayList<>());
-    public int taskId;
-    public int userId;
-    public String affinity;
-    public Intent taskRoot;
-
-    TaskRecord(int taskId, int userId, String affinity, Intent intent) {
-        this.taskId = taskId;
-        this.userId = userId;
-        this.affinity = affinity;
-        this.taskRoot = intent;
-    }
-
-    AppTaskInfo getAppTaskInfo() {
-        int len = activities.size();
-        if (len == 0) {
-            return null;
-        }
-        ComponentName top = activities.get(len - 1).component;
-        return new AppTaskInfo(taskId, taskRoot, taskRoot.getComponent(), top);
-    }
-
-    public boolean isFinishing() {
-        boolean allFinish = true;
-        for (ActivityRecord r : activities) {
-            if (!r.marked) {
-                allFinish = false;
-                break;
+    val appTaskInfo: AppTaskInfo?
+        get() {
+            val len = activities.size
+            if (len == 0) {
+                return null
             }
+            val top = activities[len - 1].component
+            return AppTaskInfo(taskId, taskRoot, taskRoot?.component, top)
         }
-        return allFinish;
-    }
+
+    val isFinishing: Boolean
+        get() {
+            var allFinish = true
+            for (r in activities) {
+                if (!r.marked) {
+                    allFinish = false
+                    break
+                }
+            }
+            return allFinish
+        }
 }

@@ -66,6 +66,7 @@ import com.lody.virtual.server.pm.PackageSetting
 import com.lody.virtual.server.pm.VAppManagerService
 import com.lody.virtual.server.pm.VPackageManagerService
 import com.lody.virtual.server.secondary.BinderDelegateService
+import com.lody.virtual.server.security.SecurityUtils
 import com.lody.virtual.server.security.SecurityUtils.assertPackageMatchesCallingUid
 import com.lody.virtual.server.security.SecurityUtils.enforceCallingUid
 import com.lody.virtual.server.security.SecurityUtils.enforceCallingUser
@@ -130,24 +131,20 @@ class VActivityManagerService : IActivityManager.Stub() {
     ): Int {
         enforceNotIsolatedCaller("startActivity")
         enforceCallingUser(userId)
-        val callingPackage = VBinder.getCallingPackageName()
-        // TODO Permissions
-        // TODO missing check for Intent component
-        if (callingPackage != info.packageName && !info.exported) {
-            throw SecurityException("Cannot start non-exported activity.")
+
+        if (!SecurityUtils.isActivityAllowed(info)) {
+            throw SecurityException("Cannot start private activity.")
         }
 
-        synchronized(this) {
-            return mMainStack.startActivityLocked(
-                userId,
-                intent,
-                info,
-                resultTo,
-                options,
-                resultWho,
-                requestCode
-            )
-        }
+        return mMainStack.startActivityLocked(
+            userId,
+            intent,
+            info,
+            resultTo,
+            options,
+            resultWho,
+            requestCode
+        )
     }
 
     override fun startActivities(
@@ -160,21 +157,19 @@ class VActivityManagerService : IActivityManager.Stub() {
         enforceNotIsolatedCaller("startActivities")
         enforceCallingUser(userId)
 
-        synchronized(this) {
-            val infos = intents.map { intent ->
-                VirtualCore.get().resolveActivityInfo(intent, userId)
-                    ?: return ActivityManagerCompat.START_INTENT_NOT_RESOLVED
-            }.toTypedArray()
+        val infos = intents.map { intent ->
+            VirtualCore.get().resolveActivityInfo(intent, userId)
+                ?: return ActivityManagerCompat.START_INTENT_NOT_RESOLVED
+        }.toTypedArray()
 
-            return mMainStack.startActivitiesLocked(
-                userId,
-                intents.filterNotNull().toTypedArray(),
-                infos,
-                resolvedTypes,
-                token,
-                options
-            )
-        }
+        return mMainStack.startActivitiesLocked(
+            userId,
+            intents.filterNotNull().toTypedArray(),
+            infos,
+            resolvedTypes,
+            token,
+            options
+        )
     }
 
     override fun getPackageForIntentSender(binder: IBinder?): String? {
@@ -201,18 +196,22 @@ class VActivityManagerService : IActivityManager.Stub() {
         return VirtualCore.get().myUid()
     }
 
+    fun getMainPid(): Int? {
+        return mainPid
+    }
+
     override fun onActivityCreated(
         component: ComponentName?,
         caller: ComponentName?,
         token: IBinder?,
-        intent: Intent?,
+        intent: Intent,
         affinity: String?,
         taskId: Int,
         launchMode: Int,
         flags: Int
     ) {
         val pid = getCallingPid()
-        val targetApp = findProcessLocked(pid) ?: return
+        val targetApp = findProcess(pid) ?: return
         mMainStack.onActivityCreated(
             targetApp,
             component,
@@ -249,16 +248,16 @@ class VActivityManagerService : IActivityManager.Stub() {
 
 
     private fun processDead(record: ProcessRecord) {
-        synchronized(mHistory) {
+        synchronized(pidLock) {
             val iterator = mHistory.iterator()
             while (iterator.hasNext()) {
                 val r = iterator.next()
-                if (r.process != null && r.process.pid == record.pid) {
+                if (r.process != null && r.process == record) {
                     iterator.remove()
                 }
             }
-            mMainStack.processDied(record)
         }
+        mMainStack.processDied(record)
     }
 
 
@@ -270,14 +269,11 @@ class VActivityManagerService : IActivityManager.Stub() {
         val trustedProviderInfo =
             VPackageManagerService.get().getProviderInfo(component, 0, userId) ?: return null
 
-        val processName = info.processName
-        val r: ProcessRecord?
-        synchronized(this) {
-            r = startProcessIfNeedLocked(processName, userId, trustedProviderInfo.packageName)
-        }
-        if (r != null && r.client.asBinder().pingBinder()) {
+        val processName = trustedProviderInfo.processName
+        val r = startProcessIfNeed(processName, userId, trustedProviderInfo.packageName)
+        if (r != null && r.client?.asBinder()?.isBinderAlive == true) {
             try {
-                return r.client.acquireProviderClient(trustedProviderInfo)
+                return r.client?.acquireProviderClient(trustedProviderInfo)
             } catch (e: RemoteException) {
                 Timber.e(e)
             }
@@ -289,7 +285,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         return mMainStack.getCallingActivity(userId, token)
     }
 
-    override fun getCallingPackage(userId: Int, token: IBinder?): String? {
+    override fun getCallingPackage(userId: Int, token: IBinder?): String {
         return mMainStack.getCallingPackage(userId, token)
     }
 
@@ -305,17 +301,17 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     private fun addRecord(r: ServiceRecord) {
-        synchronized(mHistory) {
+        synchronized(pidLock) {
             mHistory.add(r)
         }
     }
 
     private fun findRecordLocked(userId: Int, serviceInfo: ServiceInfo?): ServiceRecord? {
-        synchronized(mHistory) {
+        synchronized(pidLock) {
             for (r in mHistory) {
                 // If service is not created, and bindService with the flag that is
                 // not BIND_AUTO_CREATE, r.process is null
-                if ((r.process == null || r.process.userId == userId)
+                if ((r.process == null || r.process?.userId == userId)
                     && ComponentUtils.isSameComponent(serviceInfo, r.serviceInfo)
                 ) {
                     return r
@@ -326,7 +322,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     private fun findRecordLocked(connection: IServiceConnection?): ServiceRecord? {
-        synchronized(mHistory) {
+        synchronized(pidLock) {
             for (r in mHistory) {
                 if (r.containConnection(connection)) {
                     return r
@@ -344,9 +340,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         userId: Int
     ): ComponentName? {
         enforceCallingUser(userId)
-        synchronized(this) {
-            return startServiceCommon(service, true, userId)
-        }
+        return startServiceCommon(service, true, userId)
     }
 
     private fun startServiceCommon(
@@ -355,7 +349,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     ): ComponentName? {
         // resolveServiceInfo gives null if permissions are not met
         val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return null
-        val targetApp = startProcessIfNeedLocked(
+        val targetApp = startProcessIfNeed(
             ComponentUtils.getProcessName(serviceInfo),
             userId,
             serviceInfo.packageName
@@ -412,13 +406,11 @@ class VActivityManagerService : IActivityManager.Stub() {
         userId: Int
     ): Int {
         enforceCallingUser(userId)
-        synchronized(this) {
-            // resolveServiceInfo gives null if permissions are not met
-            val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return 0
-            val r = findRecordLocked(userId, serviceInfo) ?: return 0
-            this.stopServiceCommon(r, ComponentUtils.toComponentName(serviceInfo))
-            return 1
-        }
+        // resolveServiceInfo gives null if permissions are not met
+        val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return 0
+        val r = findRecordLocked(userId, serviceInfo) ?: return 0
+        this.stopServiceCommon(r, ComponentUtils.toComponentName(serviceInfo))
+        return 1
     }
 
     override fun stopServiceToken(
@@ -428,17 +420,15 @@ class VActivityManagerService : IActivityManager.Stub() {
         userId: Int
     ): Boolean {
         enforceCallingUser(userId)
-        synchronized(this) {
-            val r = token as? ServiceRecord ?: return false
+        val r = token as? ServiceRecord ?: return false
 
-            // Only the caller can stop services
-            assertPackageMatchesCallingUid(r.serviceInfo.packageName)
-            if (r.startId == startId || startId == -1) {
-                stopServiceCommon(r, className)
-                return true
-            }
-            return false
+        // Only the caller can stop services
+        assertPackageMatchesCallingUid(r.serviceInfo?.packageName)
+        if (r.startId == startId || startId == -1) {
+            stopServiceCommon(r, className)
+            return true
         }
+        return false
     }
 
     private fun stopServiceCommon(r: ServiceRecord, className: ComponentName?) {
@@ -458,7 +448,7 @@ class VActivityManagerService : IActivityManager.Stub() {
             }
             try {
                 IApplicationThreadCompat.scheduleUnbindService(
-                    r.process.appThread,
+                    r.process?.appThread,
                     r,
                     bindRecord.intent
                 )
@@ -467,123 +457,119 @@ class VActivityManagerService : IActivityManager.Stub() {
             }
         }
         try {
-            IApplicationThreadCompat.scheduleStopService(r.process.appThread, r)
+            IApplicationThreadCompat.scheduleStopService(r.process?.appThread, r)
         } catch (e: RemoteException) {
             Timber.e(e)
         }
-        synchronized(mHistory) {
+        synchronized(pidLock) {
             mHistory.remove(r)
         }
     }
 
     override fun bindService(
-        caller: IBinder?, token: IBinder?, service: Intent?, resolvedType: String?,
+        caller: IBinder?, token: IBinder?, service: Intent, resolvedType: String?,
         connection: IServiceConnection, flags: Int, userId: Int
     ): Int {
         enforceCallingUser(userId)
-        synchronized(this) {
-            // resolveServiceInfo gives null if permissions are not met
-            val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return 0
+        // resolveServiceInfo gives null if permissions are not met
+        val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return 0
 
-            val component = service!!.component
-            val logMessage: LogMessage = LogMessage.BindService(
-                serviceInfo.packageName,
-                component?.className ?: "",
-                serviceInfo.exported
-            )
-            val holder = LogMessageHolder.Builder(logMessage).build()
-            VLoggingManagerService.get().log(holder)
+        val component = service.component
+        val logMessage: LogMessage = LogMessage.BindService(
+            serviceInfo.packageName,
+            component?.className ?: "",
+            serviceInfo.exported
+        )
+        val holder = LogMessageHolder.Builder(logMessage).build()
+        VLoggingManagerService.get().log(holder)
 
-            var r = findRecordLocked(userId, serviceInfo)
-            val firstLaunch = r == null
-            if (firstLaunch) {
-                if ((flags and Context.BIND_AUTO_CREATE) != 0) {
-                    startServiceCommon(service, false, userId)
-                    r = findRecordLocked(userId, serviceInfo)
-                }
+        var r = findRecordLocked(userId, serviceInfo)
+        val firstLaunch = r == null
+        if (firstLaunch) {
+            if ((flags and Context.BIND_AUTO_CREATE) != 0) {
+                startServiceCommon(service, false, userId)
+                r = findRecordLocked(userId, serviceInfo)
             }
-            if (r == null) {
-                return 0
-            }
-            val boundRecord = r.peekBinding(service)
-            if (boundRecord?.binder != null && boundRecord.binder.pingBinder()) {
-                if (boundRecord.doRebind) {
-                    try {
-                        IApplicationThreadCompat.scheduleBindService(
-                            r.process.appThread,
-                            r,
-                            service,
-                            true,
-                            0
-                        )
-                    } catch (e: RemoteException) {
-                        Timber.e(e)
-                    }
-                }
-                val componentName = ComponentName(r.serviceInfo.packageName, r.serviceInfo.name)
-                connectService(connection, componentName, boundRecord, false)
-            } else {
+        }
+        if (r == null) {
+            return 0
+        }
+        val boundRecord = r.peekBinding(service)
+        if (boundRecord?.binder != null && boundRecord.binder?.isBinderAlive == true) {
+            if (boundRecord.doRebind) {
                 try {
                     IApplicationThreadCompat.scheduleBindService(
-                        r.process.appThread,
+                        r.process?.appThread,
                         r,
                         service,
-                        false,
+                        true,
                         0
                     )
                 } catch (e: RemoteException) {
                     Timber.e(e)
                 }
             }
-            r.lastActivityTime = SystemClock.uptimeMillis()
-            r.addToBoundIntent(service, connection)
-            return 1
+            val servicePackage = r.serviceInfo?.packageName ?: return 0
+            val serviceName = r.serviceInfo?.name ?: return 0
+            val componentName = ComponentName(servicePackage, serviceName)
+            connectService(connection, componentName, boundRecord, false)
+        } else {
+            try {
+                IApplicationThreadCompat.scheduleBindService(
+                    r.process?.appThread,
+                    r,
+                    service,
+                    false,
+                    0
+                )
+            } catch (e: RemoteException) {
+                Timber.e(e)
+            }
         }
+        r.lastActivityTime = SystemClock.uptimeMillis()
+        r.addToBoundIntent(service, connection)
+        return 1
     }
 
 
     override fun unbindService(connection: IServiceConnection?, userId: Int): Boolean {
         enforceCallingUser(userId)
-        synchronized(this) {
-            val r = findRecordLocked(connection) ?: return false
+        val r = findRecordLocked(connection) ?: return false
 
-            for (bindRecord in r.bindings) {
-                if (!bindRecord.containConnection(connection)) {
-                    continue
-                }
-                bindRecord.removeConnection(connection)
-                try {
-                    IApplicationThreadCompat.scheduleUnbindService(
-                        r.process.appThread,
-                        r,
-                        bindRecord.intent
-                    )
-                } catch (e: RemoteException) {
-                    Timber.e(e)
-                }
+        for (bindRecord in r.bindings) {
+            if (!bindRecord.containConnection(connection)) {
+                continue
             }
-
-            if (r.startId <= 0 && r.getConnectionCount() <= 0) {
-                try {
-                    IApplicationThreadCompat.scheduleStopService(r.process.appThread, r)
-                } catch (e: RemoteException) {
-                    Timber.e(e)
-                }
+            bindRecord.removeConnection(connection)
+            try {
+                IApplicationThreadCompat.scheduleUnbindService(
+                    r.process?.appThread,
+                    r,
+                    bindRecord.intent
+                )
+            } catch (e: RemoteException) {
+                Timber.e(e)
             }
-            return true
         }
+
+        if (r.startId <= 0 && r.connectionCount <= 0) {
+            try {
+                IApplicationThreadCompat.scheduleStopService(r.process?.appThread, r)
+            } catch (e: RemoteException) {
+                Timber.e(e)
+            }
+        }
+        return true
     }
 
     override fun unbindFinished(token: IBinder?, service: Intent?, doRebind: Boolean, userId: Int) {
         enforceCallingUser(userId)
-        synchronized(this) {
-            val r = token as? ServiceRecord
-            if (r != null) {
-                assertPackageMatchesCallingUid(r.serviceInfo.packageName)
-                val boundRecord = r.peekBinding(service)
-                if (boundRecord != null) {
-                    boundRecord.doRebind = doRebind
-                }
+        val r = token as? ServiceRecord
+        if (r != null) {
+            assertPackageMatchesCallingUid(r.serviceInfo?.packageName)
+            val boundRecord = r.peekBinding(service)
+            if (boundRecord != null) {
+                boundRecord.doRebind = doRebind
             }
         }
     }
@@ -602,45 +588,39 @@ class VActivityManagerService : IActivityManager.Stub() {
         userId: Int
     ) {
         enforceCallingUser(userId)
-        synchronized(this) {
-            val r = token as? ServiceRecord ?: return
-            assertPackageMatchesCallingUid(r.serviceInfo.packageName)
-            if (ActivityManagerCompat.SERVICE_DONE_EXECUTING_STOP == type) {
-                synchronized(mHistory) {
-                    mHistory.remove(r)
-                }
+        val r = token as? ServiceRecord ?: return
+        assertPackageMatchesCallingUid(r.serviceInfo?.packageName)
+        if (ActivityManagerCompat.SERVICE_DONE_EXECUTING_STOP == type) {
+            synchronized(pidLock) {
+                mHistory.remove(r)
             }
         }
     }
 
     override fun peekService(service: Intent?, resolvedType: String?, userId: Int): IBinder? {
         enforceCallingUser(userId)
-        synchronized(this) {
-            // resolveServiceInfo gives null if permissions are not met
-            val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return null
-            val r = findRecordLocked(userId, serviceInfo)
-            if (r != null) {
-                val boundRecord = r.peekBinding(service)
-                if (boundRecord != null) {
-                    return boundRecord.binder
-                }
+        // resolveServiceInfo gives null if permissions are not met
+        val serviceInfo: ServiceInfo = resolveServiceInfo(service, userId) ?: return null
+        val r = findRecordLocked(userId, serviceInfo)
+        if (r != null) {
+            val boundRecord = r.peekBinding(service)
+            if (boundRecord != null) {
+                return boundRecord.binder
             }
-            return null
         }
+        return null
     }
 
     override fun publishService(token: IBinder?, intent: Intent?, service: IBinder?, userId: Int) {
         enforceCallingUser(userId)
-        synchronized(this) {
-            val r = token as? ServiceRecord
-            if (r != null) {
-                val boundRecord = r.peekBinding(intent)
-                if (boundRecord != null) {
-                    boundRecord.binder = service
-                    for (conn in boundRecord.connections) {
-                        val component = ComponentUtils.toComponentName(r.serviceInfo)
-                        connectService(conn, component, boundRecord, false)
-                    }
+        val r = token as? ServiceRecord
+        if (r != null) {
+            val boundRecord = r.peekBinding(intent)
+            if (boundRecord != null) {
+                boundRecord.binder = service
+                for (conn in boundRecord.connections) {
+                    val component = ComponentUtils.toComponentName(r.serviceInfo)
+                    connectService(conn, component, boundRecord, false)
                 }
             }
         }
@@ -670,20 +650,20 @@ class VActivityManagerService : IActivityManager.Stub() {
         userId: Int
     ): VParceledListSlice<ActivityManager.RunningServiceInfo?> {
         enforceCallingUser(userId)
-        synchronized(mHistory) {
-            val services: MutableList<ActivityManager.RunningServiceInfo?> =
-                ArrayList(mHistory.size)
+        val services: MutableList<ActivityManager.RunningServiceInfo?> = ArrayList(mHistory.size)
+        val info = ActivityManager.RunningServiceInfo()
+        synchronized(pidLock) {
             for (r in mHistory) {
-                if (r.process.userId != userId) {
+                if (r.process?.userId != userId) {
                     continue
                 }
-                val info = ActivityManager.RunningServiceInfo()
-                info.uid = r.process.vuid
-                info.pid = r.process.pid
-                val processRecord = findProcessLocked(r.process.pid)
+                info.uid = r.process?.vuid ?: continue
+                info.pid = r.process?.pid ?: continue
+
+                val processRecord = findProcess(info.pid)
                 if (processRecord != null) {
                     info.process = processRecord.processName
-                    info.clientPackage = processRecord.info.packageName
+                    info.clientPackage = processRecord.info?.packageName
                 }
                 info.activeSince = r.activeSince
                 info.lastActivityTime = r.lastActivityTime
@@ -702,40 +682,42 @@ class VActivityManagerService : IActivityManager.Stub() {
     ) {
         enforceCallingUser(userId)
         val r = token as? ServiceRecord ?: return
-        assertPackageMatchesCallingUid(r.serviceInfo.packageName)
+        assertPackageMatchesCallingUid(r.serviceInfo?.packageName)
 
-        if (id != 0) {
-            requireNotNull(notification) { "null notification" }
-            if (r.foregroundId != id) {
-                if (r.foregroundId != 0) {
-                    cancelNotification(userId, r.foregroundId, r.serviceInfo.packageName)
+        synchronized(pidLock) {
+            if (id != 0) {
+                requireNotNull(notification) { "null notification" }
+                if (r.foregroundId != id) {
+                    if (r.foregroundId != 0) {
+                        cancelNotification(userId, r.foregroundId, r.serviceInfo?.packageName)
+                    }
+                    r.foregroundId = id
                 }
-                r.foregroundId = id
-            }
-            r.foregroundNoti = notification
-            postNotification(userId, id, r.serviceInfo.packageName, notification)
-        } else {
-            if (removeNotification) {
-                cancelNotification(userId, r.foregroundId, r.serviceInfo.packageName)
-                r.foregroundId = 0
-                r.foregroundNoti = null
+                r.foregroundNoti = notification
+                postNotification(userId, id, r.serviceInfo?.packageName, notification)
+            } else {
+                if (removeNotification) {
+                    cancelNotification(userId, r.foregroundId, r.serviceInfo?.packageName)
+                    r.foregroundId = 0
+                    r.foregroundNoti = null
+                }
             }
         }
     }
 
     private fun cancelNotification(userId: Int, id: Int, pkg: String?) {
-        val id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
-        val tag = VNotificationManager.get().dealNotificationTag(id, pkg, null, userId)
-        nm.cancel(tag, id)
+        val newId = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
+        val tag = VNotificationManager.get().dealNotificationTag(newId, pkg, null, userId)
+        nm.cancel(tag, newId)
     }
 
     private fun postNotification(userId: Int, id: Int, pkg: String?, notification: Notification?) {
-        val id = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
-        val tag = VNotificationManager.get().dealNotificationTag(id, pkg, null, userId)
+        val newId = VNotificationManager.get().dealNotificationId(id, pkg, null, userId)
+        val tag = VNotificationManager.get().dealNotificationTag(newId, pkg, null, userId)
         //        VNotificationManager.get().dealNotification(id, notification, pkg);
-        VNotificationManager.get().addNotification(id, tag, pkg, userId)
+        VNotificationManager.get().addNotification(newId, tag, pkg, userId)
         try {
-            nm.notify(tag, id, notification)
+            nm.notify(tag, newId, notification)
         } catch (e: Throwable) {
             Timber.e(e)
         }
@@ -746,18 +728,16 @@ class VActivityManagerService : IActivityManager.Stub() {
         val callingPid = getCallingPid()
         val appId = VAppManagerService.get().getAppId(packageName)
         val uid = VUserHandle.getUid(userId, appId)
-        synchronized(this) {
-            val app = findProcessLocked(callingPid)
-            if (app == null) {
-                val appInfo =
-                    VPackageManagerService.get().getApplicationInfo(packageName, 0, userId)
-                        ?: return
-                appInfo.flags = appInfo.flags or ApplicationInfo.FLAG_HAS_CODE
-                val stubProcessName = getProcessName(callingPid)
-                val vpid = parseVPid(stubProcessName)
-                if (vpid != -1) {
-                    performStartProcessLocked(uid, vpid, appInfo, processName)
-                }
+        val app = findProcess(callingPid)
+        if (app == null) {
+            val appInfo =
+                VPackageManagerService.get().getApplicationInfo(packageName, 0, userId)
+                    ?: return
+            appInfo.flags = appInfo.flags or ApplicationInfo.FLAG_HAS_CODE
+            val stubProcessName = getProcessName(callingPid)
+            val vpid = parseVPid(stubProcessName)
+            if (vpid != -1) {
+                performStartProcessLocked(uid, vpid, appInfo, processName)
             }
         }
     }
@@ -767,7 +747,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         if (stubProcessName != null && stubProcessName.startsWith(prefix)) {
             try {
                 return stubProcessName.substring(prefix.length).toInt()
-            } catch (e: NumberFormatException) {
+            } catch (_: NumberFormatException) {
                 // ignore
             }
         }
@@ -785,11 +765,11 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
 
-    private fun attachClient(pid: Int, clientBinder: IBinder?) {
+    private fun attachClient(pid: Int, clientBinder: IBinder?): Boolean {
         val client = IVClient.Stub.asInterface(clientBinder)
         if (client == null) {
             Process.killProcess(pid)
-            return
+            return false
         }
         var thread: IInterface? = null
         try {
@@ -799,7 +779,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         }
         if (thread == null) {
             Process.killProcess(pid)
-            return
+            return false
         }
         var app: ProcessRecord? = null
         try {
@@ -812,18 +792,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         }
         if (app == null) {
             Process.killProcess(pid)
-            return
-        }
-        try {
-            val record: ProcessRecord = app
-            clientBinder!!.linkToDeath(object : IBinder.DeathRecipient {
-                override fun binderDied() {
-                    clientBinder.unlinkToDeath(this, 0)
-                    onProcessDead(record)
-                }
-            }, 0)
-        } catch (e: RemoteException) {
-            Timber.e(e)
+            return false
         }
         app.client = client
         app.appThread = thread
@@ -833,6 +802,23 @@ class VActivityManagerService : IActivityManager.Stub() {
             mProcessNames[ProcessIdentifier(app.processName, app.vuid)] = pid
             mPidsSelfLocked[pid] = app
         }
+
+        try {
+            val record: ProcessRecord = app
+            clientBinder?.linkToDeath(object : IBinder.DeathRecipient {
+                override fun binderDied() {
+                    clientBinder.unlinkToDeath(this, 0)
+                    onProcessDead(record)
+                }
+            }, 0)
+        } catch (e: RemoteException) {
+            Timber.e(e)
+            onProcessDead(app)
+            Process.killProcess(pid)
+            return false
+        }
+
+        return true
     }
 
     private fun onProcessDead(record: ProcessRecord) {
@@ -846,7 +832,7 @@ class VActivityManagerService : IActivityManager.Stub() {
 
         val message: LogMessage = AppDeath()
         val holder = LogMessageHolder.Builder(message)
-            .setPackageName(record.processName)
+            .setPackageName(record.processName ?: "")
             .setUserId(record.userId)
             .setPid(record.pid)
             .build()
@@ -855,22 +841,18 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun getFreeStubCount(): Int {
-        val currentProcesses = synchronized(pidLock) {
-            mPidsSelfLocked.size
-        }
+        val currentProcesses = mPidsSelfLocked.size
         return VASettings.STUB_COUNT - currentProcesses
     }
 
     override fun initProcess(packageName: String?, processName: String?, userId: Int): Int {
         enforceCallingUser(userId)
         assertPackageMatchesCallingUid(packageName)
-        synchronized(this) {
-            val r = startProcessIfNeedLocked(processName, userId, packageName)
-            return r?.vpid ?: -1
-        }
+        val r = startProcessIfNeed(processName, userId, packageName)
+        return r?.vpid ?: -1
     }
 
-    fun startProcessIfNeedLocked(
+    fun startProcessIfNeed(
         processName: String?,
         userId: Int,
         packageName: String?
@@ -893,7 +875,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         }
         val uid = VUserHandle.getUid(userId, ps.appId)
         var app = getProcessByName(processName, uid)
-        if (app != null && app.client.asBinder().pingBinder()) {
+        if (app != null && app.client?.asBinder()?.isBinderAlive == true) {
             return app
         }
         val vpid = queryFreeStubProcessLocked()
@@ -911,7 +893,7 @@ class VActivityManagerService : IActivityManager.Stub() {
             Uri.fromParts("package", ps.packageName, null)
         )
         intent.setPackage(ps.packageName)
-        intent.putExtra(Intent.EXTRA_UID, VUserHandle.getUid(ps.appId, userId))
+        intent.putExtra(Intent.EXTRA_UID, VUserHandle.getUid(userId, ps.appId))
         intent.putExtra(EXTRA_USER_HANDLE, userId)
         sendBroadcastAsUser(intent, null)
     }
@@ -923,10 +905,9 @@ class VActivityManagerService : IActivityManager.Stub() {
             return -1 // INVALID_UID
         }
         val myUid = Process.myUid()
-        val r = findProcessLocked(pid)
-        // TODO ensure that myUid does not collide with any vuid
+        val r = findProcess(pid)
         if (myUid == r?.vuid) {
-            throw SecurityException("A guest app should never have the same VUID as the server process")
+            throw SecurityException("A guest app should never have the same VUID as the server process!")
         }
         if (r != null) {
             return r.vuid
@@ -960,21 +941,24 @@ class VActivityManagerService : IActivityManager.Stub() {
         }
         val pid = res.getInt(BUNDLE_PID)
         val clientBinder = BundleCompat.getBinder(res, BUNDLE_CLIENT_BINDER)
-        attachClient(pid, clientBinder)
-        return app
+        return if (attachClient(pid, clientBinder)) {
+            app
+        } else {
+            null
+        }
     }
+
 
     private fun queryFreeStubProcessLocked(): Int {
         // Find first unused vpid in the range 0-49
-        synchronized(pidLock) {
-            repeat(VASettings.STUB_COUNT) { vpid ->
-                val using = mPidsSelfLocked.values.any { r ->
-                    r.vpid == vpid
-                }
+        // TODO Race condition with starting and handing out vpid
+        repeat(VASettings.STUB_COUNT) { vpid ->
+            val using = mPidsSelfLocked.values.any { r ->
+                r.vpid == vpid
+            }
 
-                if (!using) {
-                    return vpid
-                }
+            if (!using) {
+                return vpid
             }
         }
 
@@ -986,26 +970,20 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun isAppPid(pid: Int): Boolean {
-        return findProcessLocked(pid) != null
+        return findProcess(pid) != null
     }
 
     override fun getAppProcessName(pid: Int): String? {
-        synchronized(pidLock) {
-            return mPidsSelfLocked[pid]?.processName
-        }
+        return mPidsSelfLocked[pid]?.processName
     }
 
     fun getProcessByName(name: String?, vuid: Int): ProcessRecord? {
-        synchronized(pidLock) {
-            val pid = mProcessNames[ProcessIdentifier(name, vuid)] ?: return null
-            return mPidsSelfLocked[pid]
-        }
+        val pid = mProcessNames[ProcessIdentifier(name, vuid)] ?: return null
+        return mPidsSelfLocked[pid]
     }
 
     override fun getProcessPkgList(pid: Int): List<String?> {
-        synchronized(pidLock) {
-            return mPidsSelfLocked[pid]?.pkgList?.toList() ?: emptyList()
-        }
+        return mPidsSelfLocked[pid]?.pkgList?.toList() ?: emptyList()
     }
 
     override fun killAllApps() {
@@ -1013,11 +991,9 @@ class VActivityManagerService : IActivityManager.Stub() {
         // TODO Make a helper function to check system pid or engine pid
         val isSystem = VBinder.getCallingPid() == systemPid
 
-        synchronized(pidLock) {
-            mPidsSelfLocked.values.forEach {
-                if (isSystem || it.vuid == caller) {
-                    Process.killProcess(it.pid)
-                }
+        mPidsSelfLocked.values.forEach {
+            if (isSystem || it.vuid == caller) {
+                Process.killProcess(it.pid)
             }
         }
     }
@@ -1029,11 +1005,9 @@ class VActivityManagerService : IActivityManager.Stub() {
         val uid = VBinder.getCallingUid()
         val isSystem = VBinder.getCallingPid() == systemPid
 
-        synchronized(pidLock) {
-            mProcessNames.entries.forEach { (process, pid) ->
-                if (process.vuid == uid || isSystem) {
-                    Process.killProcess(pid)
-                }
+        mProcessNames.entries.forEach { (process, pid) ->
+            if (process.vuid == uid || isSystem) {
+                Process.killProcess(pid)
             }
         }
     }
@@ -1042,20 +1016,16 @@ class VActivityManagerService : IActivityManager.Stub() {
         enforceCallingUser(userId)
         assertPackageMatchesCallingUid(packageName)
 
-        synchronized(pidLock) {
-            return mPidsSelfLocked.values.any { r ->
-                r.userId == userId && r.info.packageName == packageName
-            }
+        return mPidsSelfLocked.values.any { r ->
+            r.userId == userId && r.info?.packageName == packageName
         }
     }
 
     override fun killApplicationProcess(processName: String?, uid: Int) {
         enforceCallingUid(uid)
-        synchronized(pidLock) {
-            val pid = mProcessNames[ProcessIdentifier(processName, uid)]
-            if (pid != null) {
-                Process.killProcess(pid)
-            }
+        val pid = mProcessNames[ProcessIdentifier(processName, uid)]
+        if (pid != null) {
+            Process.killProcess(pid)
         }
     }
 
@@ -1069,9 +1039,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     }
 
     override fun getInitialPackage(pid: Int): String? {
-        synchronized(pidLock) {
-            return mPidsSelfLocked[pid]?.info?.packageName
-        }
+        return mPidsSelfLocked[pid]?.info?.packageName
     }
 
     override fun handleApplicationCrash() {
@@ -1080,27 +1048,21 @@ class VActivityManagerService : IActivityManager.Stub() {
 
     override fun appDoneExecuting() {
         val caller = VBinder.getCallingPid()
-        synchronized(pidLock) {
-            val r = mPidsSelfLocked[caller]
-            if (r != null) {
-                r.doneExecuting = true
-                r.lock.open()
-            }
+        val r = mPidsSelfLocked[caller]
+        if (r != null) {
+            r.doneExecuting = true
+            r.lock.open()
         }
     }
 
-    private fun findProcessLocked(pid: Int): ProcessRecord? {
-        synchronized(pidLock) {
-            return mPidsSelfLocked[pid]
-        }
+    private fun findProcess(pid: Int): ProcessRecord? {
+        return mPidsSelfLocked[pid]
     }
 
     fun stopUser(userHandle: Int, stub: IStopUserCallback.Stub): Int {
-        synchronized(pidLock) {
-            mPidsSelfLocked.values.forEach { r ->
-                if (r.userId == userHandle) {
-                    Process.killProcess(r.pid)
-                }
+        mPidsSelfLocked.values.forEach { r ->
+            if (r.userId == userHandle) {
+                Process.killProcess(r.pid)
             }
         }
 
@@ -1117,13 +1079,14 @@ class VActivityManagerService : IActivityManager.Stub() {
         resultReceiver: BroadcastReceiver?, scheduler: Handler?, initialCode: Int,
         initialData: String?, initialExtras: Bundle?
     ) {
+
         val context = VirtualCore.get().context
         if (user != null) {
             intent.putExtra(INTENT_USER_ID, user.identifier)
         }
-        // TODO: checkPermission
+
         context.sendOrderedBroadcast(
-            intent, null,  /* permission */resultReceiver, scheduler, initialCode, initialData,
+            intent, receiverPermission, resultReceiver, scheduler, initialCode, initialData,
             initialExtras
         )
     }
@@ -1143,8 +1106,7 @@ class VActivityManagerService : IActivityManager.Stub() {
         if (user != null) {
             intent.putExtra(INTENT_USER_ID, user.identifier)
         }
-        // TODO: checkPermission
-        context.sendBroadcast(intent)
+        context.sendBroadcast(intent, permission)
     }
 
     fun handleStaticBroadcast(
@@ -1216,17 +1178,21 @@ class VActivityManagerService : IActivityManager.Stub() {
                 info.packageName
             ) && r == null
         ) {
-            r = startProcessIfNeedLocked(
+            r = startProcessIfNeed(
                 info.processName,
                 VUserHandle.getUserId(vuid),
                 info.packageName
             )
         }
         if (r?.appThread != null) {
-            performScheduleReceiver(
-                r.client, vuid, info, intent,
-                result
-            )
+            r.client?.let { c ->
+                performScheduleReceiver(
+                    c, vuid, info, intent,
+                    result
+                )
+            }
+        } else {
+            result?.finish()
         }
     }
 
@@ -1295,6 +1261,7 @@ class VActivityManagerService : IActivityManager.Stub() {
     companion object {
         private const val BROADCAST_NOT_STARTED_PKG = false
 
+        @Volatile
         private var mainPid: Int? = null
         private val sService = AtomicReference<VActivityManagerService>()
         private val TAG: String = VActivityManagerService::class.java.getSimpleName()

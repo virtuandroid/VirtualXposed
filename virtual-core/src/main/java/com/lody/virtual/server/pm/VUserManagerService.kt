@@ -871,7 +871,7 @@ class VUserManagerService private constructor(
          */
         private fun checkManageUsersPermission(message: String?) {
             val uid = VBinder.getCallingUid()
-            if (uid != VirtualCore.get().myUid()) {
+            if (uid != VirtualCore.get().myUid() && uid != VActivityManagerService.get().getMainPid()) {
                 throw SecurityException("You need MANAGE_USERS permission to: $message")
             }
         }

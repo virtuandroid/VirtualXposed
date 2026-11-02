@@ -1,6 +1,5 @@
 package com.lody.virtual.server.am;
 
-import com.lody.virtual.client.core.VirtualCore;
 import com.lody.virtual.helper.utils.FileUtils;
 import com.lody.virtual.helper.utils.VLog;
 import com.lody.virtual.os.VEnvironment;
@@ -14,7 +13,6 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.HashMap;
-import java.util.Map;
 
 import static android.os.Process.FIRST_APPLICATION_UID;
 

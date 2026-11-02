@@ -4,13 +4,15 @@ import com.lody.virtual.helper.collection.ArrayMap;
 import com.lody.virtual.server.pm.parser.PackageParserEx;
 import com.lody.virtual.server.pm.parser.VPackage;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * @author Lody
  */
 
 public class PackageCacheManager {
 
-    static final ArrayMap<String, VPackage> PACKAGE_CACHE = new ArrayMap<>();
+    static final ConcurrentHashMap<String, VPackage> PACKAGE_CACHE = new ConcurrentHashMap<>();
 
     public static int size() {
         synchronized (PACKAGE_CACHE) {

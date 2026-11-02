@@ -8,6 +8,7 @@ import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.IBinder
 import android.os.RemoteException
+import android.os.SystemClock
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.client.env.VirtualRuntime
 import com.lody.virtual.client.stub.VASettings
@@ -21,6 +22,7 @@ import mirror.android.app.ActivityThread
 import mirror.android.app.IActivityManager
 import mirror.android.app.IApplicationThread
 import mirror.com.android.internal.R_Hide
+import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -35,6 +37,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
      * Key = TaskId, Value = TaskRecord
      */
     private val mHistory = ConcurrentHashMap<Int, TaskRecord>()
+    private val historyLock = Any()
 
     private fun deliverNewIntentLocked(
         sourceRecord: ActivityRecord?,
@@ -45,9 +48,9 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
             return
         }
         val creator =
-            if (sourceRecord != null) sourceRecord.component.packageName else "android"
+            if (sourceRecord != null) sourceRecord.component?.packageName else "android"
         try {
-            targetRecord.process.client.scheduleNewIntent(creator, targetRecord.token, intent)
+            targetRecord.process.client!!.scheduleNewIntent(creator, targetRecord.token, intent)
         } catch (e: RemoteException) {
             e.printStackTrace()
         } catch (npe: NullPointerException) {
@@ -63,7 +66,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
         return this.mHistory.values.firstOrNull {
             it.userId == userId &&
                     it.taskRoot != null &&
-                    intent.component == it.taskRoot.component
+                    intent.component == it.taskRoot!!.component
         }
     }
 
@@ -95,33 +98,39 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
         var marked = false
         when (clearTarget) {
             ClearTarget.TASK -> {
-                for (r in task.activities) {
-                    r.marked = true
-                    marked = true
-                }
-            }
-
-            ClearTarget.SPEC_ACTIVITY -> {
-                for (r in task.activities) {
-                    if (r.component == component) {
+                synchronized(task.activities) {
+                    for (r in task.activities) {
                         r.marked = true
                         marked = true
                     }
                 }
             }
 
-            ClearTarget.TOP -> {
-                var index = task.activities.size
-                while (index-- > 0) {
-                    val r = task.activities[index]
-                    if (r.component == component) {
-                        marked = true
-                        break
+            ClearTarget.SPEC_ACTIVITY -> {
+                synchronized(task.activities) {
+                    for (r in task.activities) {
+                        if (r.component == component) {
+                            r.marked = true
+                            marked = true
+                        }
                     }
                 }
-                if (marked) {
-                    while (index++ < task.activities.size - 1) {
-                        task.activities[index].marked = true
+            }
+
+            ClearTarget.TOP -> {
+                synchronized(task.activities) {
+                    var index = task.activities.size
+                    while (index-- > 0) {
+                        val r = task.activities[index]
+                        if (r.component == component) {
+                            marked = true
+                            break
+                        }
+                    }
+                    if (marked) {
+                        while (index++ < task.activities.size - 1) {
+                            task.activities[index].marked = true
+                        }
                     }
                 }
             }
@@ -137,11 +146,19 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
      * while the client's process is still alive. So remove related data in VA
      * as well. A new TaskRecord will be recreated in `onActivityCreated`
      */
-    private fun optimizeTasksLocked() {
-        val recentTask = mAM.appTasks.mapNotNull { it.taskInfo?.id }
+    private fun optimizeTasks() {
+        val snapshotAt = SystemClock.elapsedRealtime()
 
-        mHistory.entries.removeAll { (_, task) ->
-            task.taskId !in recentTask
+        val recent = try {
+            mAM.appTasks.mapNotNull { it.taskInfo?.id }.toSet()
+        } catch (e: Exception) {
+            Timber.e(e)
+            return
+        }
+
+        synchronized(historyLock) {
+            // never prune tasks created after the snapshot was taken
+            mHistory.values.removeAll { it.taskId !in recent && it.createdAt < snapshotAt - 2_000 }
         }
     }
 
@@ -154,7 +171,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
         token: IBinder?,
         options: Bundle?
     ): Int {
-        optimizeTasksLocked()
+        optimizeTasks()
         var reuseTarget = ReuseTarget.CURRENT
         val intent = intents.first()
         val info = infos.first()
@@ -239,7 +256,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
         userId: Int, intent: Intent, info: ActivityInfo, resultTo: IBinder?, options: Bundle?,
         resultWho: String?, requestCode: Int
     ): Int {
-        optimizeTasksLocked()
+        optimizeTasks()
 
         val destIntent: Intent?
         val sourceRecord = findActivityByToken(userId, resultTo)
@@ -389,13 +406,15 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
 
     private fun scheduleFinishMarkedActivityLocked() {
         mHistory.values.forEach { task ->
-            task.activities.forEach { r ->
-                if (r.marked) {
-                    VirtualRuntime.getUIHandler().post {
-                        try {
-                            r.process.client.finishActivity(r.token)
-                        } catch (e: RemoteException) {
-                            e.printStackTrace()
+            synchronized(task.activities) {
+                task.activities.forEach { r ->
+                    if (r.marked) {
+                        VirtualRuntime.getUIHandler().post {
+                            try {
+                                r.process.client!!.finishActivity(r.token)
+                            } catch (e: RemoteException) {
+                                e.printStackTrace()
+                            }
                         }
                     }
                 }
@@ -539,9 +558,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
         info: ActivityInfo
     ): Intent? {
         val intentCopy = Intent(intent)
-        val targetApp =
-            mService.startProcessIfNeedLocked(info.processName, userId, info.packageName)
-                ?: return null
+        val targetApp = mService.startProcessIfNeed(info.processName, userId, info.packageName) ?: return null
         val targetIntent = Intent()
         targetIntent.setClassName(
             VirtualCore.get().hostPkg,
@@ -562,17 +579,15 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
         component: ComponentName?,
         caller: ComponentName?,
         token: IBinder?,
-        taskRoot: Intent?,
+        taskRoot: Intent,
         affinity: String?,
         taskId: Int,
         launchMode: Int,
         flags: Int
     ) {
-        optimizeTasksLocked()
-        var task = mHistory[taskId]
-        if (task == null) {
-            task = TaskRecord(taskId, targetApp.userId, affinity, taskRoot)
-            mHistory[taskId] = task
+        optimizeTasks()
+        val task = mHistory.getOrPut(taskId) {
+            TaskRecord(taskId, targetApp.userId, affinity, taskRoot)
         }
         val record = ActivityRecord(
             task, component, caller, token, targetApp.userId, targetApp,
@@ -582,7 +597,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
     }
 
     fun onActivityResumed(userId: Int, token: IBinder?) {
-        optimizeTasksLocked()
+        optimizeTasks()
         val r = findActivityByToken(userId, token)
         if (r != null) {
             r.task.activities.remove(r)
@@ -591,26 +606,25 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
     }
 
     fun onActivityDestroyed(userId: Int, token: IBinder?): ActivityRecord? {
-        optimizeTasksLocked()
+        optimizeTasks()
         val r = findActivityByToken(userId, token)
         r?.task?.activities?.remove(r)
         return r
     }
 
     fun processDied(record: ProcessRecord) {
-        optimizeTasksLocked()
+        optimizeTasks()
 
-        var taskId = mHistory.size
-        while (taskId-- > 0) {
-            val task = mHistory[taskId] ?: continue
-
-            val iterator = task.activities.iterator()
-            while (iterator.hasNext()) {
-                val r = iterator.next()
-                if (r.process.pid == record.pid) {
-                    iterator.remove()
-                    if (task.activities.isEmpty()) {
-                        mHistory.remove(task.taskId)
+        mHistory.values.forEach { task ->
+            synchronized(task.activities) {
+                val iterator = task.activities.iterator()
+                while (iterator.hasNext()) {
+                    val r = iterator.next()
+                    if (r.process.pid == record.pid) {
+                        iterator.remove()
+                        if (task.activities.isEmpty()) {
+                            mHistory.remove(task.taskId)
+                        }
                     }
                 }
             }
@@ -638,7 +652,7 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
     }
 
     fun getTaskInfo(taskId: Int): AppTaskInfo? {
-        return mHistory[taskId]?.getAppTaskInfo()
+        return mHistory[taskId]?.appTaskInfo
     }
 
     fun getActivityClassForToken(userId: Int, token: IBinder?): ComponentName? {
@@ -666,13 +680,15 @@ internal class ActivityStack(private val mService: VActivityManagerService) {
         }
 
         private fun topActivityInTask(task: TaskRecord): ActivityRecord? {
-            for (size in task.activities.indices.reversed()) {
-                val r = task.activities[size]
-                if (!r.marked) {
-                    return r
+            synchronized(task.activities) {
+                for (size in task.activities.indices.reversed()) {
+                    val r = task.activities[size]
+                    if (!r.marked) {
+                        return r
+                    }
                 }
+                return null
             }
-            return null
         }
     }
 }
