@@ -20,10 +20,10 @@ class ProcessRecord(// all about the first app in the process
     var appThread: IInterface? = null
     @Volatile
     var pid: Int = 0
-    var userId: Int = VUserHandle.getUserId(vuid)
+    val userId: Int = VUserHandle.getUserId(vuid)
     @Volatile
     var doneExecuting: Boolean = false
-    var priority: Int = 0
+    val priority: Int = 0
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

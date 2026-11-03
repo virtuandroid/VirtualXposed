@@ -10,10 +10,11 @@ import android.os.RemoteException
 import java.util.Collections
 
 class ServiceRecord : Binder() {
-    val bindings: MutableList<IntentBindRecord> = ArrayList<IntentBindRecord>()
+    val bindings: MutableList<IntentBindRecord> = ArrayList()
     var activeSince: Long = 0
     var lastActivityTime: Long = 0
     var serviceInfo: ServiceInfo? = null
+    @Volatile
     var startId: Int = 0
     var process: ProcessRecord? = null
     var foregroundId: Int = 0

@@ -14,8 +14,7 @@ internal class TaskRecord(
     var affinity: String?,
     var taskRoot: Intent?,
 ) {
-    val activities: MutableList<ActivityRecord> =
-        Collections.synchronizedList(ArrayList<ActivityRecord?>())
+    val activities: MutableList<ActivityRecord> = Collections.synchronizedList(ArrayList<ActivityRecord?>())
     val createdAt = SystemClock.elapsedRealtime()
 
     val appTaskInfo: AppTaskInfo?

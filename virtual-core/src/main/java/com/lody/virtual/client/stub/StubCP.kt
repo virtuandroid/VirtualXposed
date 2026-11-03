@@ -13,6 +13,7 @@ import com.lody.virtual.IntentHelper.BUNDLE_VUID
 import com.lody.virtual.client.VClientImpl
 import com.lody.virtual.client.core.VirtualCore
 import com.lody.virtual.helper.compat.BundleCompat
+import com.lody.virtual.server.security.SecurityUtils
 
 /**
  * @author Lody
@@ -33,6 +34,7 @@ open class StubCP : ContentProvider() {
     }
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        SecurityUtils.assertSystemCaller()
         if (method == VA_INIT_PROCESS_METHOD) {
             return initProcess(extras)
         }

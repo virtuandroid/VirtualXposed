@@ -79,6 +79,7 @@ dependencies {
     implementation("com.getkeepsafe.relinker:relinker:1.4.4")
     implementation("dev.rikka.rikkax.parcelablelist:parcelablelist:2.0.1")
     implementation("com.github.ChickenHook:RestrictionBypass:c59bd6a")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2")
 }
 
 repositories {
